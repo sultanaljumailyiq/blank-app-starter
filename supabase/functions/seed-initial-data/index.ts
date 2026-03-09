@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
     });
 
     const existingUsers = await checkUser.json();
-    const adminExists = existingUsers.users?.some(u => u.email === adminEmail);
+    const adminExists = existingUsers.users?.some((u: any) => u.email === adminEmail);
 
     let adminId;
     if (!adminExists) {
