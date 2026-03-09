@@ -336,7 +336,7 @@ Deno.serve(async (req) => {
         const errorResponse = {
             error: {
                 code: 'SEED_DATA_ERROR',
-                message: (error as Error).message
+                message: error.message
             }
         };
 

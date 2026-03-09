@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
     });
 
     const existingUsers = await checkUser.json();
-    const adminExists = existingUsers.users?.some((u: any) => u.email === adminEmail);
+    const adminExists = existingUsers.users?.some(u => u.email === adminEmail);
 
     let adminId;
     if (!adminExists) {
@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
       const adminData = await createAdmin.json();
       adminId = adminData.id;
     } else {
-      adminId = existingUsers.users.find((u: any) => u.email === adminEmail).id;
+      adminId = existingUsers.users.find(u => u.email === adminEmail).id;
     }
 
     // إضافة بيانات العلاجات
@@ -188,7 +188,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Error:', error);
     return new Response(JSON.stringify({
-      error: (error as Error).message
+      error: error.message
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
