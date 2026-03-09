@@ -221,7 +221,7 @@ Deno.serve(async (req) => {
         const errorResponse = {
             error: {
                 code: 'COMMUNITY_MANAGEMENT_ERROR',
-                message: error.message
+                message: (error as Error).message
             }
         };
 

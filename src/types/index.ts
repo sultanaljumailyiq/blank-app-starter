@@ -39,6 +39,7 @@ export interface Clinic {
   // Added based on usage
   governorate?: string; // Added for location management
   address?: string; // Added for unified location architecture
+  city?: string; // Added for city-level location
   email?: string;
   reviews?: number;
   owner_id?: string; // Links to Auth User
