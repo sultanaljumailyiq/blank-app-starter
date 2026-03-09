@@ -1,0 +1,10 @@
+Γ£à Connected
+
+=== Current Suppliers ===
+  ╪┤╪▒┘â╪⌐ ╪º┘ä┘à┘ê╪▒╪» (╪¬╪¼╪▒┘è╪¿┘è): user_id=NULL, profile_id=NULL, logo=NULL
+
+=== Users with supplier role ===
+  supplier.demo@smartdental.com: id=64c72ad9-fa3a-4aaf-84b8-513ab96d6cdc, role=supplier
+
+=== Attempting Auto-Link by Email ===
+Error: column s.contact_email does not exist

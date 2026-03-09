@@ -1,0 +1,60 @@
+import { Post } from '../../contexts/CommunityContext';
+
+export const mockPosts: Post[] = [
+    {
+        id: '1',
+        authorId: '1',
+        authorName: 'د. أحمد محمد',
+        authorRole: 'doctor',
+        content: 'مشاركة تجربتي مع تقنية زراعة الأسنان الفورية. النتائج كانت رائعة جداً والمرضى راضون تماماً عن الخدمة.',
+        likes: 156,
+        comments: [],
+        date: '2025-11-07',
+        category: 'خبرات طبية',
+        tags: ['زراعة_أسنان', 'تقنيات_حديثة'],
+        likedByMe: false,
+        isElite: true,
+        isSyndicate: true,
+    },
+    {
+        id: '2',
+        authorId: '2',
+        authorName: 'شركة الأدوات الطبية العراقية',
+        authorRole: 'supplier',
+        content: 'عرض خاص لفترة محدودة! خصم 25% على جميع أجهزة الأشعة الرقمية. التوصيل مجاني لجميع المحافظات.',
+        likes: 89,
+        comments: [],
+        date: '2025-11-06',
+        category: 'عروض تجارية',
+        tags: ['عروض', 'أجهزة_طبية'],
+        likedByMe: false
+    },
+    {
+        id: '3',
+        authorId: '3',
+        authorName: 'د. فاطمة حسين',
+        authorRole: 'doctor',
+        content: 'حضرت مؤتمر طب الأسنان في دبي الأسبوع الماضي. كان هناك محاضرات رائعة عن أحدث تقنيات التجميل والتبييض.',
+        likes: 203,
+        comments: [],
+        date: '2025-11-05',
+        category: 'فعاليات ومؤتمرات',
+        tags: ['مؤتمرات', 'تجميل_أسنان'],
+        likedByMe: true,
+        isElite: true,
+        isSyndicate: false,
+    },
+    {
+        id: '4',
+        authorId: '4',
+        authorName: 'د. خالد الزبيدي',
+        authorRole: 'doctor',
+        content: 'نصيحة اليوم: استخدام الخيط الطبي يومياً لا يقل أهمية عن تنظيف الأسنان بالفرشاة.',
+        likes: 178,
+        comments: [],
+        date: '2025-11-04',
+        likedByMe: false,
+        isSyndicate: true,
+        isElite: false
+    }
+];

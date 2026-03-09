@@ -1,0 +1,8 @@
+Applying migration: supabase/migrations/20260211_unify_staff_identity.sql
+Error applying migration:
+Error applying migration:
+ERROR DETAIL: null value in column "phone" of relation "staff" violates not-null constraint
+error: null value in column "phone" of relation "staff" violates not-null constraint
+    at C:\Users\AL NABAA\Desktop\ANTI\smart-dental\node_modules\pg\lib\client.js:588:17
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async runMigration (C:\Users\AL NABAA\Desktop\ANTI\smart-dental\scripts\run_migration.cjs:28:9)

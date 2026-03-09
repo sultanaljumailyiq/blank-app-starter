@@ -1,0 +1,83 @@
+=== clinic_lab_favorites SCHEMA ===
+  id | uuid | NO | gen_random_uuid()
+  clinic_id | integer | YES | -
+  lab_id | uuid | YES | -
+  custom_lab_id | uuid | YES | -
+  notes | text | YES | -
+  created_at | timestamp with time zone | YES | now()
+
+=== clinic_saved_labs SCHEMA ===
+  id | uuid | NO | gen_random_uuid()
+  clinic_id | uuid | NO | -
+  lab_id | uuid | YES | -
+  is_manual | boolean | YES | false
+  manual_data | jsonb | YES | -
+  created_at | timestamp with time zone | YES | now()
+
+=== clinic_custom_labs SCHEMA ===
+  id | uuid | NO | gen_random_uuid()
+  clinic_id | integer | YES | -
+  name | text | NO | -
+  address | text | YES | -
+  phone | text | YES | -
+  specialties | ARRAY | YES | -
+  created_at | timestamp with time zone | YES | now()
+  updated_at | timestamp with time zone | YES | now()
+
+=== ROW COUNTS ===
+  clinic_lab_favorites: 2 rows
+  clinic_saved_labs: 0 rows
+  clinic_custom_labs: 1 rows
+
+=== SAMPLE: clinic_lab_favorites ===
+  Row 1:
+    id: 64e3c270-5156-4276-9988-4083e5d7345e
+    clinic_id: 1
+    lab_id: 39e5ca0e-cd81-4f45-becb-020a13041543
+    custom_lab_id: NULL
+    notes: NULL
+    created_at: "2026-01-24T08:56:04.600Z"
+  Row 2:
+    id: 92e029d6-e4f4-4aa3-ba49-8464898df8ec
+    clinic_id: 2
+    lab_id: 39e5ca0e-cd81-4f45-becb-020a13041543
+    custom_lab_id: NULL
+    notes: NULL
+    created_at: "2026-02-11T20:21:36.744Z"
+
+=== SAMPLE: clinic_saved_labs ===
+  (empty)
+
+=== SAMPLE: clinic_custom_labs ===
+  Row 1:
+    id: d4df45f9-a6bf-4019-ae74-dd9ad75f654f
+    clinic_id: 1
+    name: ┘à╪«╪¬╪¿╪▒ ┘è╪»┘ê┘è 
+    address: ╪¿╪║╪»╪º╪» 
+    phone: 07818641727
+    specialties: ["╪¬┘è╪¼╪º┘å"]
+    created_at: "2026-01-24T08:45:20.477Z"
+    updated_at: "2026-01-24T08:45:20.477Z"
+
+=== COMPARISON: clinic_lab_favorites vs clinic_saved_labs ===
+  Only in favorites: custom_lab_id, notes
+  Only in saved_labs: is_manual, manual_data
+  Common: id, clinic_id, lab_id, created_at
+
+=== lab_chat_conversations - full details ===
+  id | bigint
+  doctor_id | uuid
+  lab_id | uuid
+  order_id | uuid
+  last_message_date | timestamp with time zone
+  created_at | timestamp with time zone
+
+=== lab_chat_messages - full details ===
+  id | bigint
+  conversation_id | bigint
+  sender_id | uuid
+  content | text
+  is_read | boolean
+  created_at | timestamp with time zone
+
+Done.

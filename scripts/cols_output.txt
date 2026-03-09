@@ -1,0 +1,49 @@
+=== dental_laboratories columns ===
+  id (uuid)
+  user_id (uuid)
+  name (text)
+  is_active (boolean)
+  created_at (timestamp with time zone)
+  address (text)
+  phone (text)
+  email (text)
+  description (text)
+  logo_url (text)
+  services_list (ARRAY)
+  rating (numeric)
+  cover_image_url (text)
+  bank_information (jsonb)
+  social_links (jsonb)
+  notifications_settings (jsonb)
+  commission_percentage (numeric)
+  pending_commission (numeric)
+  is_verified (boolean)
+  establishment_year (integer)
+  license_expiry (date)
+  two_factor_auth (boolean)
+  email_notifications (boolean)
+  emergency_service (boolean)
+  auto_accept_orders (boolean)
+  delivery_radius (integer)
+  total_ratings (integer)
+  account_status (text)
+  is_accredited (boolean)
+  verified_at (timestamp with time zone)
+  verified_by (uuid)
+  accredited_at (timestamp with time zone)
+  accredited_by (uuid)
+  updated_at (timestamp with time zone)
+
+=== RLS POLICIES on dental_laboratories ===
+  RLS enabled: true
+
+  Policy: "Authenticated users can read labs"
+     Command: SELECT
+     USING: true
+
+  Policy: "Public read lab"
+     Command: SELECT
+     USING: (is_active = true)
+
+=== Sample Lab Data ===
+Error: column "lab_name" does not exist

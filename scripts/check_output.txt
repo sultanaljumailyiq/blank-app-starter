@@ -1,0 +1,172 @@
+Γ£à Connected to Supabase DB
+
+=== 1. SUPPLIERS TABLE - logo column ===
+  Γ£à logo (text, nullable: YES)
+
+=== 2. PROFILES TABLE - avatar column ===
+  Γ£à avatar_url (text)
+
+=== 3. RLS POLICIES on suppliers ===
+  RLS enabled: true
+
+  ≡ƒô£ Policy: "Allow read suppliers"
+     Command: SELECT
+     USING: true
+     WITH CHECK: none
+
+  ≡ƒô£ Policy: "Allow admin to update suppliers"
+     Command: UPDATE
+     USING: true
+     WITH CHECK: true
+
+  ≡ƒô£ Policy: "Allow insert suppliers"
+     Command: INSERT
+     USING: none
+     WITH CHECK: true
+
+  ≡ƒô£ Policy: "Public read suppliers"
+     Command: SELECT
+     USING: true
+     WITH CHECK: none
+
+  ≡ƒô£ Policy: "suppliers_update_own_optimized"
+     Command: UPDATE
+     USING: ((user_id = ( SELECT auth.uid() AS uid)) OR (profile_id = ( SELECT auth.uid() AS uid)) OR (id = ( SELECT auth.uid() AS uid)))
+     WITH CHECK: none
+
+  ≡ƒô£ Policy: "suppliers_insert_own_optimized"
+     Command: INSERT
+     USING: none
+     WITH CHECK: ((user_id = ( SELECT auth.uid() AS uid)) OR (profile_id = ( SELECT auth.uid() AS uid)) OR (id = ( SELECT auth.uid() AS uid)))
+
+  ≡ƒô£ Policy: "Admin/Owner update suppliers"
+     Command: UPDATE
+     USING: ((auth.uid() = user_id) OR ((( SELECT users.role
+   FROM auth.users
+  WHERE (users.id = auth.uid())))::text = 'service_role'::text))
+     WITH CHECK: none
+
+=== 4. RLS POLICIES on profiles ===
+
+  ≡ƒô£ Policy: "Allow update profiles"
+     Command: UPDATE
+
+  ≡ƒô£ Policy: "Allow public read access to profiles"
+     Command: SELECT
+
+  ≡ƒô£ Policy: "Allow users to update own profile"
+     Command: UPDATE
+
+  ≡ƒô£ Policy: "Allow admins full access to profiles"
+     Command: ALL
+
+  ≡ƒô£ Policy: "profiles_select_v2"
+     Command: SELECT
+
+  ≡ƒô£ Policy: "profiles_update_v2"
+     Command: UPDATE
+
+  ≡ƒô£ Policy: "profiles_insert_v2"
+     Command: INSERT
+
+=== 5. STORAGE BUCKETS ===
+  ≡ƒôª Bucket: "platform-assets" (id: platform-assets, public: true)
+  ≡ƒôª Bucket: "documents" (id: documents, public: true)
+  ≡ƒôª Bucket: "community-posts" (id: community-posts, public: true)
+  ≡ƒôª Bucket: "avatars" (id: avatars, public: true)
+  ≡ƒôª Bucket: "clinics" (id: clinics, public: true)
+  ≡ƒôª Bucket: "supplier-logos" (id: supplier-logos, public: true)
+  ≡ƒôª Bucket: "products" (id: products, public: true)
+  ≡ƒôª Bucket: "patient-docs" (id: patient-docs, public: true)
+
+=== 6. STORAGE POLICIES ===
+
+  ≡ƒô£ Policy: "Public read products bucket"
+     Command: SELECT
+
+  ≡ƒô£ Policy: "Authenticated upload products bucket"
+     Command: INSERT
+
+  ≡ƒô£ Policy: "Authenticated update products bucket"
+     Command: UPDATE
+
+  ≡ƒô£ Policy: "Authenticated delete products bucket"
+     Command: DELETE
+
+  ≡ƒô£ Policy: "Public Access Platform Assets"
+     Command: SELECT
+
+  ≡ƒô£ Policy: "Public Read Access"
+     Command: SELECT
+
+  ≡ƒô£ Policy: "Authenticated Upload Access"
+     Command: INSERT
+
+  ≡ƒô£ Policy: "Authenticated Update/Delete Access"
+     Command: UPDATE
+
+  ≡ƒô£ Policy: "Authenticated Delete Access"
+     Command: DELETE
+
+  ≡ƒô£ Policy: "Auth Users Upload Platform Assets"
+     Command: INSERT
+
+  ≡ƒô£ Policy: "Auth Users Update Platform Assets"
+     Command: UPDATE
+
+  ≡ƒô£ Policy: "Public Access Documents"
+     Command: SELECT
+
+  ≡ƒô£ Policy: "Auth Users Upload Documents"
+     Command: INSERT
+
+  ≡ƒô£ Policy: "Public Access Community Posts Images"
+     Command: SELECT
+
+  ≡ƒô£ Policy: "Auth Users Upload Post Images"
+     Command: INSERT
+
+  ≡ƒô£ Policy: "Auth Users Delete Own Post Images"
+     Command: DELETE
+
+  ≡ƒô£ Policy: "Public Access Avatars"
+     Command: SELECT
+
+  ≡ƒô£ Policy: "Auth Users Upload Avatars"
+     Command: INSERT
+
+  ≡ƒô£ Policy: "Users Update Own Avatars"
+     Command: UPDATE
+
+  ≡ƒô£ Policy: "Allow authenticated uploads"
+     Command: INSERT
+
+  ≡ƒô£ Policy: "Allow public viewing"
+     Command: SELECT
+
+  ≡ƒô£ Policy: "Allow public read supplier-logos"
+     Command: SELECT
+
+  ≡ƒô£ Policy: "Allow authenticated upload supplier-logos"
+     Command: INSERT
+
+  ≡ƒô£ Policy: "Allow authenticated update supplier-logos"
+     Command: UPDATE
+
+  ≡ƒô£ Policy: "Allow authenticated delete supplier-logos"
+     Command: DELETE
+
+  ≡ƒô£ Policy: "Public Access to Platform Assets"
+     Command: SELECT
+
+  ≡ƒô£ Policy: "Admins can upload platform assets"
+     Command: INSERT
+
+  ≡ƒô£ Policy: "Admins can update platform assets"
+     Command: UPDATE
+
+  ≡ƒô£ Policy: "Admins can delete platform assets"
+     Command: DELETE
+
+=== 7. SAMPLE SUPPLIER DATA ===
+  ≡ƒæñ ╪┤╪▒┘â╪⌐ ╪º┘ä┘à┘ê╪▒╪» (╪¬╪¼╪▒┘è╪¿┘è): logo=NULL, user_id=NULL, profile_id=NULL

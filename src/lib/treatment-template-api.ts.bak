@@ -1,0 +1,552 @@
+import { supabase } from '../lib/supabase';
+import {
+  TreatmentTemplate,
+  CustomTreatmentPlan,
+  TemplateField,
+  CustomTemplate,
+  TreatmentTemplateFilters,
+  TemplateUsage,
+  TreatmentCategory,
+  TemplateFormData,
+  CostItem,
+  SessionDetail
+} from '../types/treatment-templates';
+
+// Treatment Template API Functions
+
+export class TreatmentTemplateAPI {
+  
+  // Get all treatment templates
+  static async getTreatmentTemplates(filters?: TreatmentTemplateFilters): Promise<TreatmentTemplate[]> {
+    try {
+      let query = supabase
+        .from('treatment_templates')
+        .select('*');
+
+      // Apply filters
+      if (filters?.category?.length) {
+        query = query.in('category', filters.category);
+      }
+      
+      if (filters?.difficultyLevel?.length) {
+        query = query.in('difficulty_level', filters.difficultyLevel);
+      }
+      
+      if (filters?.searchTerm) {
+        query = query.or(`name.ilike.%${filters.searchTerm}%,name_ar.ilike.%${filters.searchTerm}%`);
+      }
+      
+      // Sorting
+      if (filters?.sortBy) {
+        const order = filters.sortOrder || 'asc';
+        query = query.order(filters.sortBy, { ascending: order === 'asc' });
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+      
+      // Parse procedures JSONB field
+      const templates = data?.map(template => ({
+        ...template,
+        procedures: typeof template.procedures === 'string' 
+          ? JSON.parse(template.procedures) 
+          : template.procedures || []
+      })) || [];
+
+      // Apply cost and duration filters
+      let filteredTemplates = templates;
+      
+      if (filters?.costRange) {
+        filteredTemplates = filteredTemplates.filter(template => {
+          const costMin = template.estimated_cost_min || 0;
+          const costMax = template.estimated_cost_max || template.base_cost || 0;
+          return costMin >= filters.costRange!.min && costMax <= filters.costRange!.max;
+        });
+      }
+      
+      if (filters?.duration) {
+        filteredTemplates = filteredTemplates.filter(template => {
+          const duration = template.estimated_duration_minutes || 0;
+          return duration >= filters.duration!.min && duration <= filters.duration!.max;
+        });
+      }
+
+      return filteredTemplates;
+    } catch (error) {
+      console.error('Error fetching treatment templates:', error);
+      throw error;
+    }
+  }
+
+  // Get template by ID
+  static async getTemplateById(id: string): Promise<TreatmentTemplate | null> {
+    try {
+      const { data, error } = await supabase
+        .from('treatment_templates')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
+      
+      if (!data) return null;
+
+      return {
+        ...data,
+        procedures: typeof data.procedures === 'string' 
+          ? JSON.parse(data.procedures) 
+          : data.procedures || []
+      };
+    } catch (error) {
+      console.error('Error fetching template by ID:', error);
+      throw error;
+    }
+  }
+
+  // Get templates by category
+  static async getTemplatesByCategory(category: TreatmentCategory): Promise<TreatmentTemplate[]> {
+    try {
+      const { data, error } = await supabase
+        .from('treatment_templates')
+        .select('*')
+        .eq('category', category);
+
+      if (error) throw error;
+      
+      return data?.map(template => ({
+        ...template,
+        procedures: typeof template.procedures === 'string' 
+          ? JSON.parse(template.procedures) 
+          : template.procedures || []
+      })) || [];
+    } catch (error) {
+      console.error('Error fetching templates by category:', error);
+      throw error;
+    }
+  }
+
+  // Search templates
+  static async searchTemplates(query: string): Promise<TreatmentTemplate[]> {
+    try {
+      const { data, error } = await supabase
+        .from('treatment_templates')
+        .select('*')
+        .or(`name.ilike.%${query}%,name_ar.ilike.%${query}%,description.ilike.%${query}%,description_ar.ilike.%${query}%`);
+
+      if (error) throw error;
+      
+      return data?.map(template => ({
+        ...template,
+        procedures: typeof template.procedures === 'string' 
+          ? JSON.parse(template.procedures) 
+          : template.procedures || []
+      })) || [];
+    } catch (error) {
+      console.error('Error searching templates:', error);
+      throw error;
+    }
+  }
+
+  // Get popular templates
+  static async getPopularTemplates(limit: number = 10): Promise<TreatmentTemplate[]> {
+    try {
+      // This would require a usage tracking table
+      // For now, return templates ordered by creation date
+      const { data, error } = await supabase
+        .from('treatment_templates')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error) throw error;
+      
+      return data?.map(template => ({
+        ...template,
+        procedures: typeof template.procedures === 'string' 
+          ? JSON.parse(template.procedures) 
+          : template.procedures || []
+      })) || [];
+    } catch (error) {
+      console.error('Error fetching popular templates:', error);
+      throw error;
+    }
+  }
+
+  // Create custom treatment plan
+  static async createCustomTreatmentPlan(plan: Omit<CustomTreatmentPlan, 'id' | 'createdAt' | 'updatedAt'>): Promise<CustomTreatmentPlan> {
+    try {
+      const { data, error } = await supabase
+        .from('custom_treatment_plans')
+        .insert({
+          template_id: plan.templateId,
+          patient_id: plan.patientId,
+          doctor_id: plan.doctorId,
+          customized_fields: plan.customizedFields,
+          selected_instruments: plan.selectedInstruments,
+          added_procedures: plan.addedProcedures,
+          removed_procedures: plan.removedProcedures,
+          estimated_cost: plan.estimatedCost,
+          actual_cost: plan.actualCost,
+          cost_breakdown: plan.costBreakdown,
+          planned_duration: plan.plannedDuration,
+          number_of_sessions: plan.numberOfSessions,
+          session_details: plan.sessionDetails,
+          status: plan.status,
+          notes: plan.notes
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      
+      return {
+        ...data,
+        id: data.id,
+        template: plan.template,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at
+      };
+    } catch (error) {
+      console.error('Error creating custom treatment plan:', error);
+      throw error;
+    }
+  }
+
+  // Update treatment plan
+  static async updateTreatmentPlan(id: string, updates: Partial<CustomTreatmentPlan>): Promise<CustomTreatmentPlan> {
+    try {
+      const { data, error } = await supabase
+        .from('custom_treatment_plans')
+        .update({
+          customized_fields: updates.customizedFields,
+          selected_instruments: updates.selectedInstruments,
+          added_procedures: updates.addedProcedures,
+          removed_procedures: updates.removedProcedures,
+          estimated_cost: updates.estimatedCost,
+          actual_cost: updates.actualCost,
+          cost_breakdown: updates.costBreakdown,
+          planned_duration: updates.plannedDuration,
+          number_of_sessions: updates.numberOfSessions,
+          session_details: updates.sessionDetails,
+          status: updates.status,
+          notes: updates.notes,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      
+      return {
+        ...data,
+        template: data.template || {} // Would need to fetch template separately
+      };
+    } catch (error) {
+      console.error('Error updating treatment plan:', error);
+      throw error;
+    }
+  }
+
+  // Get patient treatment plans
+  static async getPatientTreatmentPlans(patientId: string): Promise<CustomTreatmentPlan[]> {
+    try {
+      const { data, error } = await supabase
+        .from('custom_treatment_plans')
+        .select(`
+          *,
+          templates:treatment_templates(*)
+        `)
+        .eq('patient_id', patientId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      
+      return data?.map(plan => ({
+        ...plan,
+        template: plan.templates,
+        createdAt: plan.created_at,
+        updatedAt: plan.updated_at
+      })) || [];
+    } catch (error) {
+      console.error('Error fetching patient treatment plans:', error);
+      throw error;
+    }
+  }
+
+  // Calculate treatment cost
+  static calculateTreatmentCost(
+    template: TreatmentTemplate,
+    formData: TemplateFormData,
+    customInstruments: string[] = [],
+    additionalProcedures: string[] = []
+  ): { totalCost: number; costBreakdown: CostItem[] } {
+    const costBreakdown: CostItem[] = [];
+    let totalCost = 0;
+
+    // Base template cost
+    if (template.base_cost) {
+      totalCost += template.base_cost;
+      costBreakdown.push({
+        id: 'base',
+        category: 'Base Treatment',
+        description: `Base cost for ${template.name}`,
+        amount: template.base_cost,
+        quantity: 1,
+        totalAmount: template.base_cost,
+        isOptional: false
+      });
+    }
+
+    // Add cost for selected instruments
+    customInstruments.forEach(instrument => {
+      const instrumentCost = this.getInstrumentCost(instrument);
+      if (instrumentCost > 0) {
+        totalCost += instrumentCost;
+        costBreakdown.push({
+          id: `instrument-${instrument}`,
+          category: 'Instruments',
+          description: `${instrument}`,
+          amount: instrumentCost,
+          quantity: 1,
+          totalAmount: instrumentCost,
+          isOptional: true
+        });
+      }
+    });
+
+    // Add cost for additional procedures
+    additionalProcedures.forEach(procedure => {
+      const procedureCost = this.getProcedureCost(procedure);
+      if (procedureCost > 0) {
+        totalCost += procedureCost;
+        costBreakdown.push({
+          id: `procedure-${procedure}`,
+          category: 'Additional Procedures',
+          description: `${procedure}`,
+          amount: procedureCost,
+          quantity: 1,
+          totalAmount: procedureCost,
+          isOptional: true
+        });
+      }
+    });
+
+    // Adjust for complexity factors
+    const complexityMultiplier = this.calculateComplexityMultiplier(formData);
+    totalCost *= complexityMultiplier;
+
+    return {
+      totalCost: Math.round(totalCost * 100) / 100, // Round to 2 decimal places
+      costBreakdown
+    };
+  }
+
+  // Calculate complexity multiplier
+  private static calculateComplexityMultiplier(formData: TemplateFormData): number {
+    let multiplier = 1.0;
+
+    // Severity multiplier
+    if (formData.conditionSeverity) {
+      switch (formData.conditionSeverity) {
+        case 'mild': multiplier *= 0.8; break;
+        case 'moderate': multiplier *= 1.0; break;
+        case 'severe': multiplier *= 1.3; break;
+      }
+    }
+
+    // Pain level multiplier
+    if (formData.painLevel && formData.painLevel > 7) {
+      multiplier *= 1.2;
+    }
+
+    // Anesthesia/sedation multiplier
+    if (formData.anesthesiaRequired) multiplier *= 1.1;
+    if (formData.sedationRequired) multiplier *= 1.15;
+
+    // Emergency multiplier
+    if (formData.emergency) multiplier *= 1.5;
+
+    return multiplier;
+  }
+
+  // Helper methods for cost calculation
+  private static getInstrumentCost(instrument: string): number {
+    // This would typically come from a separate instruments/equipment table
+    const instrumentCosts: Record<string, number> = {
+      'Laser': 200,
+      'Digital Scanner': 150,
+      'Microscope': 100,
+      'Surgical Drill': 75,
+      'Ultrasonic Scaler': 50
+    };
+
+    return instrumentCosts[instrument] || 0;
+  }
+
+  private static getProcedureCost(procedure: string): number {
+    // This would typically come from a procedures table
+    const procedureCosts: Record<string, number> = {
+      'X-Ray': 50,
+      '3D Scan': 100,
+      'Biopsy': 200,
+      'Anesthesia': 75,
+      'Sedation': 150
+    };
+
+    return procedureCosts[procedure] || 0;
+  }
+
+  // Generate session details
+  static generateSessionDetails(
+    template: TreatmentTemplate,
+    totalDuration: number,
+    customProcedures: string[] = []
+  ): SessionDetail[] {
+    const allProcedures = [...template.procedures, ...customProcedures];
+    const sessions: SessionDetail[] = [];
+    
+    let currentSession = 1;
+    let sessionDuration = 0;
+    let currentProcedures: string[] = [];
+
+    allProcedures.forEach((procedure, index) => {
+      const procedureDuration = this.getProcedureDuration(procedure);
+      
+      if (sessionDuration + procedureDuration > 90 && currentProcedures.length > 0) {
+        // Start new session
+        sessions.push({
+          sessionNumber: currentSession,
+          plannedDuration: sessionDuration,
+          procedures: currentProcedures,
+          instruments: template.required_instruments || [],
+          status: 'planned'
+        });
+        
+        currentSession++;
+        sessionDuration = procedureDuration;
+        currentProcedures = [procedure];
+      } else {
+        sessionDuration += procedureDuration;
+        currentProcedures.push(procedure);
+      }
+    });
+
+    // Add final session
+    if (currentProcedures.length > 0) {
+      sessions.push({
+        sessionNumber: currentSession,
+        plannedDuration: sessionDuration,
+        procedures: currentProcedures,
+        instruments: template.required_instruments || [],
+        status: 'planned'
+      });
+    }
+
+    return sessions;
+  }
+
+  private static getProcedureDuration(procedure: string): number {
+    // Default procedure durations in minutes
+    const durations: Record<string, number> = {
+      'Tooth preparation': 20,
+      'Amalgam placement': 15,
+      'Composite placement': 25,
+      'Etching': 5,
+      'Bonding': 10,
+      'Polishing': 10,
+      'Impression taking': 15,
+      'Temporary crown': 10,
+      'Crown delivery': 20,
+      'Root planing': 30,
+      'Scaling': 30,
+      'X-Ray': 5,
+      'Anesthesia': 10
+    };
+
+    return durations[procedure] || 15;
+  }
+
+  // Get template categories with stats
+  static async getCategoryStats(): Promise<Record<string, any>> {
+    try {
+      const { data, error } = await supabase
+        .from('treatment_templates')
+        .select('category, estimated_cost_range, estimated_duration_minutes');
+
+      if (error) throw error;
+
+      const stats: Record<string, any> = {};
+      
+      data?.forEach(template => {
+        if (!stats[template.category]) {
+          stats[template.category] = {
+            count: 0,
+            totalCost: 0,
+            totalDuration: 0,
+            costs: [] as number[],
+            durations: [] as number[]
+          };
+        }
+        
+        const category = stats[template.category];
+        category.count++;
+        category.totalDuration += template.estimated_duration_minutes || 0;
+        
+        // Parse cost range
+        const costRange = template.estimated_cost_range || '0-0';
+        const [min, max] = costRange.split('-').map(Number);
+        const avgCost = (min + max) / 2;
+        
+        category.costs.push(avgCost);
+        category.durations.push(template.estimated_duration_minutes || 0);
+      });
+
+      // Calculate averages
+      Object.keys(stats).forEach(category => {
+        const data = stats[category];
+        data.averageCost = data.costs.reduce((a: number, b: number) => a + b, 0) / data.costs.length;
+        data.averageDuration = data.totalDuration / data.count;
+      });
+
+      return stats;
+    } catch (error) {
+      console.error('Error fetching category stats:', error);
+      throw error;
+    }
+  }
+
+  // Track template usage
+  static async trackTemplateUsage(
+    templateId: string,
+    patientId: string,
+    doctorId: string,
+    actualCost: number,
+    actualDuration: number,
+    success: boolean,
+    rating?: number,
+    notes?: string
+  ): Promise<void> {
+    try {
+      await supabase
+        .from('template_usage')
+        .insert({
+          template_id: templateId,
+          patient_id: patientId,
+          doctor_id: doctorId,
+          actual_cost: actualCost,
+          actual_duration: actualDuration,
+          success,
+          rating,
+          notes,
+          used_at: new Date().toISOString()
+        });
+    } catch (error) {
+      console.error('Error tracking template usage:', error);
+      throw error;
+    }
+  }
+}
+
+export default TreatmentTemplateAPI;

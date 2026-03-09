@@ -1,0 +1,370 @@
+Γ£à Connected to database
+
+================================================================================
+1. dental_lab_orders TABLE SCHEMA
+================================================================================
+  id | uuid | nullable: NO | default: gen_random_uuid()
+  clinic_id | integer | nullable: YES | default: none
+  laboratory_id | uuid | nullable: YES | default: none
+  custom_lab_name | text | nullable: YES | default: none
+  patient_id | integer | nullable: YES | default: none
+  patient_name | text | nullable: NO | default: none
+  doctor_id | uuid | nullable: YES | default: none
+  staff_record_id | integer | nullable: YES | default: none
+  doctor_name | text | nullable: YES | default: none
+  order_number | text | nullable: NO | default: none
+  service_name | text | nullable: NO | default: none
+  service_details | jsonb | nullable: YES | default: none
+  status | text | nullable: YES | default: 'pending'::text
+  priority | text | nullable: YES | default: 'normal'::text
+  notes | text | nullable: YES | default: none
+  price | numeric | nullable: YES | default: none
+  final_amount | numeric | nullable: YES | default: none
+  expected_delivery_date | date | nullable: YES | default: none
+  created_at | timestamp with time zone | nullable: YES | default: now()
+  updated_at | timestamp with time zone | nullable: YES | default: now()
+  images | ARRAY | nullable: YES | default: '{}'::text[]
+  rating | integer | nullable: YES | default: none
+  review_note | text | nullable: YES | default: none
+  modification_note | text | nullable: YES | default: none
+  payment_status | text | nullable: YES | default: 'unpaid'::text
+
+  Total columns: 25
+
+================================================================================
+2. dental_lab_orders_backup TABLE SCHEMA
+================================================================================
+  id | uuid | nullable: NO | default: gen_random_uuid()
+  clinic_id | integer | nullable: YES | default: none
+  laboratory_id | uuid | nullable: YES | default: none
+  patient_name | text | nullable: NO | default: none
+  service_name | text | nullable: NO | default: none
+  status | text | nullable: YES | default: 'pending'::text
+  created_at | timestamp with time zone | nullable: YES | default: now()
+  price | numeric | nullable: YES | default: 0.00
+  priority | text | nullable: YES | default: 'normal'::text
+  payment_status | text | nullable: YES | default: 'pending'::text
+  description | text | nullable: YES | default: none
+  files | jsonb | nullable: YES | default: '[]'::jsonb
+  delivery_date | date | nullable: YES | default: none
+  saved_lab_id | uuid | nullable: YES | default: none
+  return_reason | text | nullable: YES | default: none
+  is_return_cycle | boolean | nullable: YES | default: false
+  final_amount | numeric | nullable: YES | default: none
+  paid_amount | numeric | nullable: YES | default: 0
+  custom_lab_name | text | nullable: YES | default: none
+  custom_lab_id | uuid | nullable: YES | default: none
+  delegate_id | uuid | nullable: YES | default: none
+  delegate_name | text | nullable: YES | default: none
+  doctor_name | text | nullable: YES | default: none
+  staff_record_id | integer | nullable: YES | default: none
+
+  Total columns: 24
+
+================================================================================
+3. COMPARISON: dental_lab_orders vs dental_lab_orders_backup
+================================================================================
+  Common columns (14): id, clinic_id, laboratory_id, custom_lab_name, patient_name, staff_record_id, doctor_name, service_name, status, priority, price, final_amount, created_at, payment_status
+  Only in dental_lab_orders (11): patient_id, doctor_id, order_number, service_details, notes, expected_delivery_date, updated_at, images, rating, review_note, modification_note
+  Only in dental_lab_orders_backup (10): description, files, delivery_date, saved_lab_id, return_reason, is_return_cycle, paid_amount, custom_lab_id, delegate_id, delegate_name
+
+================================================================================
+4. ROW COUNTS
+================================================================================
+  dental_lab_orders: 4 rows
+  dental_lab_orders_backup: 0 rows
+  dental_lab_representatives: 1 rows
+  lab_delegates: 3 rows
+  lab_chat_conversations: 2 rows
+  lab_chat_messages: 0 rows
+  lab_conversation_messages: 0 rows
+  lab_conversations: 0 rows
+  dental_laboratories: 1 rows
+
+================================================================================
+5. dental_lab_representatives TABLE SCHEMA
+================================================================================
+  id | uuid | nullable: NO | default: gen_random_uuid()
+  lab_id | uuid | nullable: YES | default: none
+  name | text | nullable: YES | default: none
+  phone | text | nullable: YES | default: none
+  created_at | timestamp with time zone | nullable: YES | default: now()
+  laboratory_id | uuid | nullable: YES | default: none
+  full_name | text | nullable: YES | default: none
+  email | text | nullable: YES | default: none
+  position | text | nullable: YES | default: none
+  representative_type | text | nullable: YES | default: 'delivery'::text
+  status | text | nullable: YES | default: 'available'::text
+  current_assignments | integer | nullable: YES | default: 0
+  max_assignments | integer | nullable: YES | default: 5
+  total_deliveries | integer | nullable: YES | default: 0
+  successful_deliveries | integer | nullable: YES | default: 0
+  cancelled_deliveries | integer | nullable: YES | default: 0
+  rating | numeric | nullable: YES | default: 0
+  vehicle_type | text | nullable: YES | default: none
+  working_hours | jsonb | nullable: YES | default: none
+  is_active | boolean | nullable: YES | default: true
+  user_id | uuid | nullable: YES | default: none
+
+================================================================================
+6. lab_delegates TABLE SCHEMA
+================================================================================
+  id | uuid | nullable: NO | default: gen_random_uuid()
+  laboratory_id | uuid | nullable: YES | default: none
+  name | text | nullable: NO | default: none
+  phone | text | nullable: NO | default: none
+  area | text | nullable: YES | default: none
+  is_active | boolean | nullable: YES | default: true
+
+================================================================================
+7. lab_chat_conversations TABLE SCHEMA
+================================================================================
+  id | bigint | nullable: NO | default: nextval('lab_chat_conversations_id_seq'::regclass)
+  doctor_id | uuid | nullable: YES | default: none
+  lab_id | uuid | nullable: YES | default: none
+  order_id | uuid | nullable: YES | default: none
+  last_message_date | timestamp with time zone | nullable: YES | default: now()
+  created_at | timestamp with time zone | nullable: YES | default: now()
+
+================================================================================
+7. lab_chat_messages TABLE SCHEMA
+================================================================================
+  id | bigint | nullable: NO | default: nextval('lab_chat_messages_id_seq'::regclass)
+  conversation_id | bigint | nullable: YES | default: none
+  sender_id | uuid | nullable: YES | default: none
+  content | text | nullable: NO | default: none
+  is_read | boolean | nullable: YES | default: false
+  created_at | timestamp with time zone | nullable: YES | default: now()
+
+================================================================================
+7. lab_conversation_messages TABLE SCHEMA
+================================================================================
+  id | uuid | nullable: NO | default: gen_random_uuid()
+  conversation_id | uuid | nullable: YES | default: none
+  sender_id | uuid | nullable: YES | default: none
+  content | text | nullable: NO | default: none
+  message_type | text | nullable: YES | default: 'text'::text
+  read_at | timestamp with time zone | nullable: YES | default: none
+  created_at | timestamp with time zone | nullable: YES | default: now()
+
+================================================================================
+7. lab_conversations TABLE SCHEMA
+================================================================================
+  id | uuid | nullable: NO | default: gen_random_uuid()
+  order_id | uuid | nullable: YES | default: none
+  lab_user_id | uuid | nullable: YES | default: none
+  clinic_user_id | uuid | nullable: YES | default: none
+  lab_id | uuid | nullable: YES | default: none
+  clinic_id | integer | nullable: YES | default: none
+  last_message | text | nullable: YES | default: none
+  created_at | timestamp with time zone | nullable: YES | default: now()
+  updated_at | timestamp with time zone | nullable: YES | default: now()
+
+================================================================================
+8. MISSING COLUMNS CHECK in dental_lab_orders
+================================================================================
+  delegate_id: Γ¥î MISSING
+  delegate_name: Γ¥î MISSING
+  is_return_cycle: Γ¥î MISSING
+  return_reason: Γ¥î MISSING
+  paid_amount: Γ¥î MISSING
+  delivery_date: Γ¥î MISSING
+  files: Γ¥î MISSING
+  description: Γ¥î MISSING
+  staff_id: Γ¥î MISSING
+  doctor_id (should be staff_id): ΓÜá∩╕Å EXISTS (needs rename)
+  doctor_name (should be staff_name): ΓÜá∩╕Å EXISTS (needs rename)
+
+================================================================================
+9. FOREIGN KEYS on dental_lab_orders
+================================================================================
+  clinic_id -> clinics.id (dental_lab_orders_clinic_id_fkey1)
+  laboratory_id -> dental_laboratories.id (dental_lab_orders_laboratory_id_fkey1)
+  patient_id -> patients.id (dental_lab_orders_patient_id_fkey)
+  staff_record_id -> staff.id (dental_lab_orders_staff_record_id_fkey1)
+
+================================================================================
+10. RLS POLICIES on dental_lab_orders
+================================================================================
+  Policy: Clinics can delete their own orders | cmd: DELETE | permissive: PERMISSIVE | roles: {public}
+  Policy: Clinics can manage their own orders | cmd: ALL | permissive: PERMISSIVE | roles: {public}
+  Policy: Labs can view assigned orders | cmd: ALL | permissive: PERMISSIVE | roles: {public}
+
+================================================================================
+11. RLS ENABLED STATUS for lab tables
+================================================================================
+  dental_lab_orders: RLS=false, Force=false
+  dental_lab_orders_backup: RLS=true, Force=false
+  dental_lab_representatives: RLS=true, Force=false
+  lab_chat_conversations: RLS=true, Force=false
+  lab_chat_messages: RLS=true, Force=false
+  lab_conversation_messages: RLS=true, Force=false
+  lab_conversations: RLS=true, Force=false
+  lab_delegates: RLS=true, Force=false
+
+================================================================================
+12. SAMPLE DATA: Last 3 rows from dental_lab_orders
+================================================================================
+  --- Row 1 ---
+    id: fd149139-d4da-461e-b535-40e91d0ae25f
+    clinic_id: 1
+    laboratory_id: 39e5ca0e-cd81-4f45-becb-020a13041543
+    custom_lab_name: NULL
+    patient_id: 1
+    patient_name: ╪│╪º╪▒╪⌐ ╪ú╪¡┘à╪» ┘à╪¡┘à┘ê╪»
+    doctor_id: NULL
+    staff_record_id: 1
+    doctor_name: Dr. Ali Hussein
+    order_number: ORD-965377
+    service_name: test 
+    service_details: NULL
+    status: completed
+    priority: normal
+    notes: ╪¼╪º┘ç╪▓ ┘ä┘ä╪¬┘ê╪╡┘è┘ä
+┘ü┘è ╪º┘ä┘à╪«╪¬╪¿╪▒
+╪¼╪º┘ç╪▓ ┘ä┘ä╪¬┘ê╪╡┘è┘ä
+┘ü┘è ╪º┘ä┘à╪«╪¬╪¿╪▒
+╪¼╪º┘ç╪▓ ┘ä┘ä╪º╪│╪¬┘ä╪º┘à
+    price: NULL
+    final_amount: 0.00
+    expected_delivery_date: "2026-01-27T21:00:00.000Z"
+    created_at: "2026-01-24T17:49:25.377Z"
+    updated_at: "2026-01-24T20:08:24.736Z"
+    images: []
+    rating: 5
+    review_note: 
+    modification_note: NULL
+    payment_status: unpaid
+  --- Row 2 ---
+    id: 9f08f348-7c3e-4c46-b780-82aa3e819c3b
+    clinic_id: 1
+    laboratory_id: 39e5ca0e-cd81-4f45-becb-020a13041543
+    custom_lab_name: NULL
+    patient_id: 1
+    patient_name: ╪│╪º╪▒╪⌐ ╪ú╪¡┘à╪» ┘à╪¡┘à┘ê╪»
+    doctor_id: NULL
+    staff_record_id: 1
+    doctor_name: Dr. Ali Hussein
+    order_number: ORD-385477
+    service_name: test 
+    service_details: NULL
+    status: pending
+    priority: normal
+    notes: 
+    price: NULL
+    final_amount: 0.00
+    expected_delivery_date: "2026-01-28T21:00:00.000Z"
+    created_at: "2026-01-24T17:39:45.477Z"
+    updated_at: "2026-01-24T17:39:40.345Z"
+    images: []
+    rating: NULL
+    review_note: NULL
+    modification_note: NULL
+    payment_status: unpaid
+  --- Row 3 ---
+    id: b6f90b27-3c5c-4c50-b7c3-7bd953401d11
+    clinic_id: 1
+    laboratory_id: 39e5ca0e-cd81-4f45-becb-020a13041543
+    custom_lab_name: NULL
+    patient_id: 1
+    patient_name: ╪│╪º╪▒╪⌐ ╪ú╪¡┘à╪» ┘à╪¡┘à┘ê╪»
+    doctor_id: NULL
+    staff_record_id: 1
+    doctor_name: Dr. Ali Hussein
+    order_number: ORD-833475
+    service_name: test 
+    service_details: NULL
+    status: pending
+    priority: normal
+    notes: 
+    price: NULL
+    final_amount: 0.00
+    expected_delivery_date: "2026-01-27T21:00:00.000Z"
+    created_at: "2026-01-24T16:57:13.475Z"
+    updated_at: "2026-01-24T16:57:07.969Z"
+    images: []
+    rating: NULL
+    review_note: NULL
+    modification_note: NULL
+    payment_status: unpaid
+
+================================================================================
+13. INDEXES on dental_lab_orders
+================================================================================
+  dental_lab_orders_pkey1: CREATE UNIQUE INDEX dental_lab_orders_pkey1 ON public.dental_lab_orders USING btree (id)
+
+================================================================================
+14. ALL LAB-RELATED TABLES IN DATABASE
+================================================================================
+  admin_lab_performance_view
+  clinic_custom_labs
+  clinic_lab_favorites
+  clinic_saved_labs
+  dental_lab_orders
+  dental_lab_orders_backup
+  dental_lab_representatives
+  dental_laboratories
+  lab_activity_logs
+  lab_chat_conversations
+  lab_chat_messages
+  lab_conversation_messages
+  lab_conversations
+  lab_delegates
+  lab_disputes
+  lab_services
+
+================================================================================
+15. RLS POLICIES on lab_chat_conversations
+================================================================================
+  Policy: Chat participants access | cmd: ALL | permissive: PERMISSIVE
+
+================================================================================
+15. RLS POLICIES on lab_chat_messages
+================================================================================
+  Policy: Message participants access | cmd: ALL | permissive: PERMISSIVE
+
+================================================================================
+15. RLS POLICIES on lab_conversation_messages
+================================================================================
+  Policy: Users can view their messages | cmd: SELECT | permissive: PERMISSIVE
+  Policy: Users can insert messages | cmd: INSERT | permissive: PERMISSIVE
+
+================================================================================
+15. RLS POLICIES on lab_conversations
+================================================================================
+  Policy: Users can view their conversations | cmd: SELECT | permissive: PERMISSIVE
+
+================================================================================
+16. SAMPLE DATA from lab_chat_conversations (last 2 rows)
+================================================================================
+  --- Row 1 ---
+    id: 1
+    doctor_id: 8118872f-aaa2-4322-a0d1-245b2c3bc366
+    lab_id: cde7177b-c690-42a8-b6b7-11953bf83819
+    order_id: fd149139-d4da-461e-b535-40e91d0ae25f
+    last_message_date: "2026-01-24T19:15:04.689Z"
+    created_at: "2026-01-24T19:15:04.689Z"
+  --- Row 2 ---
+    id: 2
+    doctor_id: 8118872f-aaa2-4322-a0d1-245b2c3bc366
+    lab_id: cde7177b-c690-42a8-b6b7-11953bf83819
+    order_id: fd149139-d4da-461e-b535-40e91d0ae25f
+    last_message_date: "2026-01-24T19:15:04.689Z"
+    created_at: "2026-01-24T19:15:04.689Z"
+
+================================================================================
+16. SAMPLE DATA from lab_chat_messages (last 2 rows)
+================================================================================
+  No data
+
+================================================================================
+16. SAMPLE DATA from lab_conversation_messages (last 2 rows)
+================================================================================
+  No data
+
+================================================================================
+16. SAMPLE DATA from lab_conversations (last 2 rows)
+================================================================================
+  No data
+
+Γ£à Done.

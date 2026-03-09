@@ -1,0 +1,2 @@
+Applying migration: supabase/migrations/20260211_unify_staff_identity.sql
+Migration applied successfully!
