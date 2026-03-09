@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
       const adminData = await createAdmin.json();
       adminId = adminData.id;
     } else {
-      adminId = existingUsers.users.find(u => u.email === adminEmail).id;
+      adminId = existingUsers.users.find((u: any) => u.email === adminEmail).id;
     }
 
     // إضافة بيانات العلاجات
