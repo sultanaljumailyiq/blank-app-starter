@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Sparkles, Paperclip, X, FileText, Image as ImageIcon, FileSpreadsheet, Save } from 'lucide-react';
 import { Button } from '../common/Button';
-import { aiService } from '../../services/ai/AIService';
+
+const AI_AGENT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-agent`;
+const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 interface SmartAssistantChatProps {
     patientId?: string;
