@@ -396,20 +396,12 @@ class AIService {
     }
 
     async analyzeImage(imageUrl: string, context?: string, sessionId?: string, clinicId?: number): Promise<AIAnalysisResult> {
-        // Identify User & Clinic contexts
         const { data: { user } } = await supabase.auth.getUser();
-        // If clinicId matches passed arg, use it. Otherwise try to resolve.
-        // Actually, if passed, we should TRUST it (subject to permission check).
-
         let targetClinicId = clinicId;
 
         if (user && !targetClinicId) {
-            // Attempt to resolve targetClinicId for the user
-            // 1. Is Owner?
             const { data: ownedClinic } = await supabase.from('clinics').select('id').eq('owner_id', user.id).single();
             if (ownedClinic) targetClinicId = ownedClinic.id;
-
-            // 2. Is Staff?
             if (!targetClinicId) {
                 const { data: staffMember } = await supabase.from('staff').select('clinic_id').eq('auth_user_id', user.id).single();
                 if (staffMember) targetClinicId = staffMember.clinic_id;
@@ -421,83 +413,57 @@ class AIService {
             await this.checkStaffPermission(user.id, targetClinicId);
         }
 
-        if (!this.initialized) await this.loadConfigs();
-
-        const agentType = 'image_analysis';
-        const config = this.getConfig(agentType);
-        if (!config.isActive) throw new Error('خدمة تحليل الصور غير مفعلة');
-
-        const apiKey = config.apiKey || this.getApiKey(config.provider);
-
-        // --- 1. Google / Banana Logic ---
-        if (config.provider === 'google' || config.provider === 'banana' || config.model.includes('banana')) {
-            if (!apiKey) {
-                console.warn('[AI-Service] No API Key for Google/Banana. Using Mock.');
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                return this.getMockAnalysis();
-            }
-
-            console.log(`Calling ${config.provider} (${config.model}) with key...`);
-            // TODO: Implement actual Google Gemini / Banana Dev wrapper here.
-            // For now, return Mock as placeholder for logic proof.
-
-            return { ...this.getMockAnalysis(), metadata: { isMock: true, provider: config.provider, model: config.model } };
-        }
-
-        // --- 2. OpenAI Logic ---
-        if (!apiKey) {
-            console.warn('[AI-Service] No API Key. Using Mock Response.');
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            return { ...this.getMockAnalysis(), metadata: { isMock: true, provider: config.provider, model: config.model } };
-        }
-
-        const start = Date.now();
         try {
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiKey} `
-                },
-                body: JSON.stringify({
-                    model: config.model || 'gpt-4o',
-                    messages: [
-                        {
-                            role: 'system',
-                            content: config.systemRules + "\nProvide the output in valid JSON format matching this structure: { diagnosis: string, severity: 'low'|'medium'|'high', confidence: number, findings: string[], recommendations: string[] }."
-                        },
-                        {
-                            role: 'user',
-                            content: [
-                                { type: 'text', text: context || "Analyze this dental image." },
-                                { type: 'image_url', image_url: { url: imageUrl } }
-                            ]
-                        }
-                    ],
-                    max_tokens: 1000,
-                    response_format: { type: "json_object" }
-                })
-            });
+            const { data: { session } } = await supabase.auth.getSession();
+            const response = await fetch(
+                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-agent`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+                        'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+                    },
+                    body: JSON.stringify({
+                        agent_type: 'image_analysis',
+                        message: context || 'حلل هذه الصورة السنية بدقة.',
+                        image_url: imageUrl,
+                        session_id: sessionId,
+                        clinic_id: targetClinicId,
+                    })
+                }
+            );
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.error?.message || 'OpenAI API Error');
+                throw new Error(errorData.error || 'خطأ في خدمة الذكاء الاصطناعي');
             }
 
             const data = await response.json();
-            const resultText = data.choices[0].message.content;
 
-            const tokens = data.usage?.total_tokens || 0;
-            this.logUsage(agentType, tokens, 'image_analysis', user?.id, targetClinicId, sessionId);
+            if (data.result) {
+                return {
+                    ...data.result,
+                    summary: data.result.summary || data.result.diagnosis || '',
+                    recommendation: data.result.recommendation || (data.result.recommendations?.[0]) || '',
+                    diagnosis: data.result.diagnosis,
+                    severity: data.result.severity || 'medium',
+                    findings: data.result.findings || [],
+                    issues: data.result.issues || [],
+                    metadata: { isMock: false, provider: 'lovable-ai', model: 'google/gemini-2.5-pro' }
+                };
+            }
 
-            const result = JSON.parse(resultText) as AIAnalysisResult;
-            result.metadata = {
-                isMock: false,
-                provider: config.provider,
-                model: config.model,
-                processingTime: Date.now() - start
+            // Fallback: parse raw text response
+            return {
+                issues: [],
+                summary: data.raw || 'تم التحليل',
+                recommendation: '',
+                diagnosis: data.raw || '',
+                severity: 'medium',
+                findings: [data.raw || ''],
+                metadata: { isMock: false, provider: 'lovable-ai', model: 'google/gemini-2.5-pro' }
             };
-            return result;
 
         } catch (error) {
             console.error('[AI-Service] Analysis Failed:', error);
@@ -506,106 +472,44 @@ class AIService {
     }
 
     async chat(agentType: string, message: string, contextObj?: any, userId?: string, clinicId?: string, sessionId?: string): Promise<string> {
-        // Resolve IDs if not provided (similar to analyzeImage, but maybe simpler here if passed in)
-        // For consistency, let's trust passed in IDs or resolve them if missing?
-        // Actually, let's just optimize validation:
-        if (userId && clinicId) {
-            try {
-                await this.checkUsageLimit(parseInt(clinicId)); // Ensure number
-                await this.checkStaffPermission(userId, parseInt(clinicId));
-            } catch (e: any) {
-                return e.message; // Return error as chat response for better UX? Or throw?
-                // For chat, returning message is often better so UI doesn't crash.
-            }
-        }
-
-        if (!this.initialized) await this.loadConfigs();
-
-        const config = this.getConfig(agentType);
-        if (!config.isActive) return 'نأسف، هذه الخدمة غير مفعلة حالياً.';
-
-        const apiKey = config.apiKey || this.getApiKey(config.provider);
-        if (!apiKey) {
-            console.warn('[AI-Service] Chat: No API Key. Using Mock.');
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            return this.getMockChatResponse(agentType, message, contextObj);
-        }
-
-        const systemContent = config.systemRules + (contextObj ? `\n\nContext Data: ${JSON.stringify(contextObj)} ` : "");
-
-        console.log(`[AI-Service] Chat Request -> Provider: ${config.provider}, Model: ${config.model}`);
-
-        if (config.provider === 'google') {
-            try {
-                const modelName = config.model || 'gemini-1.5-pro';
-                // Remove 'models/' prefix if present to avoid duplication
-                const cleanModel = modelName.replace('models/', '');
-
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${apiKey}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: systemContent + "\n" + message }] }]
-                    })
-                });
-
-                if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.error?.message || 'Gemini API Error');
-                }
-
-                const data = await response.json();
-                const content = data.candidates?.[0]?.content?.parts?.[0]?.text || "No response";
-
-                // Estimate tokens (Gemini doesn't always return usage in simple response)
-                const tokens = content.length / 4;
-                this.logUsage(agentType, Math.ceil(tokens), 'text_chat', userId, clinicId ? parseInt(clinicId) : undefined, sessionId);
-
-                return content;
-
-            } catch (e) {
-                console.error('Gemini Chat Error:', e);
-                return "عذراً، حدث خطأ أثناء الاتصال بـ Google Gemini.";
-            }
-        }
-
-        // --- 3. OpenAI / DeepSeek (Compatible) Logic ---
-        const baseURL = config.provider === 'deepseek' ? 'https://api.deepseek.com' : 'https://api.openai.com/v1';
-
         try {
-            const response = await fetch(`${baseURL}/chat/completions`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiKey} `
-                },
-                body: JSON.stringify({
-                    model: config.model || 'gpt-3.5-turbo',
-                    messages: [
-                        { role: 'system', content: systemContent },
-                        { role: 'user', content: message }
-                    ],
-                    temperature: config.temperature
-                })
-            });
+            const { data: { session } } = await supabase.auth.getSession();
+            const response = await fetch(
+                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-agent`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+                        'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+                    },
+                    body: JSON.stringify({
+                        agent_type: agentType,
+                        message,
+                        context: contextObj,
+                        session_id: sessionId,
+                        clinic_id: clinicId ? parseInt(clinicId) : undefined,
+                    })
+                }
+            );
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.error?.message || 'Chat API Error');
+                if (response.status === 429) return 'تم تجاوز الحد المسموح. يرجى المحاولة لاحقاً.';
+                if (response.status === 402) return 'رصيد الذكاء الاصطناعي غير كافٍ. يرجى إضافة رصيد.';
+                return errorData.error || 'عذراً، حدث خطأ أثناء الاتصال بالخادم الذكي.';
             }
 
             const data = await response.json();
-
-            const tokens = data.usage?.total_tokens || 0;
-            this.logUsage(agentType, tokens, 'text_chat', userId, clinicId ? parseInt(clinicId) : undefined, sessionId);
-
-            return data.choices[0].message.content;
+            return data.response || 'لا يوجد رد.';
 
         } catch (error) {
             console.error('[AI-Service] Chat Failed:', error);
-            return "عذراً، حدث خطأ أثناء الاتصال بالخادم الذكي.";
+            return 'عذراً، حدث خطأ أثناء الاتصال بالخادم الذكي.';
         }
     }
+
+    // Legacy code removed - all AI calls now route through ai-agent edge function
 
     // --- Mock Fallbacks (Preserved for Demo) ---
     private getMockAnalysis(): AIAnalysisResult {

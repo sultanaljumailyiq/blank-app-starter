@@ -15,10 +15,15 @@ export interface NotificationPayload {
 }
 
 /**
- * Sends a notification to a user, clinic, lab, or specific role.
+ * Sends a notification to a user, clinic, or lab.
+ * Uses the 'notifications' table in Supabase.
  */
 export const sendNotification = async (payload: NotificationPayload) => {
     try {
+        // Current schema assumption based on usage:
+        // id, user_id, title, message, type, read, created_at, link, priority
+
+        // We map our payload to DB columns
         const dbPayload: any = {
             type: payload.type,
             title: payload.title,
@@ -32,7 +37,6 @@ export const sendNotification = async (payload: NotificationPayload) => {
         if (payload.laboratory_id) dbPayload.laboratory_id = payload.laboratory_id;
         if (payload.link) dbPayload.link = payload.link;
         if (payload.priority) dbPayload.priority = payload.priority;
-        if (payload.metadata) dbPayload.metadata = payload.metadata;
 
         const { error } = await supabase
             .from('notifications')
@@ -45,29 +49,6 @@ export const sendNotification = async (payload: NotificationPayload) => {
         return true;
     } catch (error) {
         console.error('Failed to send notification:', error);
-        return false;
-    }
-};
-
-/**
- * Sends a notification to all users of a specific role (e.g., 'admin', 'doctor').
- * Uses the send_campaign_notifications RPC.
- */
-export const sendRoleNotification = async (role: 'all' | 'doctor' | 'supplier' | 'laboratory' | 'admin', title: string, message: string, link?: string) => {
-    try {
-        const { data, error } = await supabase.rpc('send_campaign_notifications', {
-            p_title: title,
-            p_message: message,
-            p_target_role: role,
-            p_type: 'system',
-            p_link: link || null,
-            p_sender_id: (await supabase.auth.getUser()).data.user?.id
-        });
-
-        if (error) throw error;
-        return data;
-    } catch (error) {
-        console.error('Failed to send role notification:', error);
         return false;
     }
 };

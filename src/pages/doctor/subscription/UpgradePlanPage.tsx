@@ -14,7 +14,6 @@ import { Link } from 'react-router-dom';
 import { PaymentModal } from '../../../components/payment/PaymentModal';
 
 import { useDoctorSubscription } from '../../../hooks/useDoctorSubscription';
-import { sendRoleNotification } from '../../../lib/notifications';
 
 export const UpgradePlanPage: React.FC = () => {
     const { plans: fetchedPlans, coupons } = useAdminSubscriptions();
@@ -314,14 +313,6 @@ export const UpgradePlanPage: React.FC = () => {
                 }]);
 
             if (insertError) throw insertError;
-
-            // Notify Admins
-            await sendRoleNotification(
-                'admin',
-                'طلب اشتراك جديد',
-                `قام ${senderName} بإرسال طلب اشتراك في باقة ${selectedPlan.name}.`,
-                '/admin/subscriptions'
-            );
 
             setShowSuccess(true);
         } catch (error: any) {
