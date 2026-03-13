@@ -142,9 +142,10 @@ export const SmartDiagnosisPage: React.FC = () => {
 
       setChatMessages(prev => {
         const updated = [...prev];
-        const loadingIdx = updated.findLastIndex(m => m.isLoading);
-        if (loadingIdx !== -1) {
-          updated[loadingIdx] = { role: 'ai', content: aiResponse };
+        const loadingIdx = [...updated].reverse().findIndex(m => m.isLoading);
+        const realIdx = loadingIdx !== -1 ? updated.length - 1 - loadingIdx : -1;
+        if (realIdx !== -1) {
+          updated[realIdx] = { role: 'ai', content: aiResponse };
         }
         return updated;
       });
@@ -152,9 +153,10 @@ export const SmartDiagnosisPage: React.FC = () => {
       console.error('AI Chat Error:', error);
       setChatMessages(prev => {
         const updated = [...prev];
-        const loadingIdx = updated.findLastIndex(m => m.isLoading);
-        if (loadingIdx !== -1) {
-          updated[loadingIdx] = { role: 'ai', content: 'عذراً، حدث خطأ أثناء المعالجة. يرجى المحاولة مرة أخرى.' };
+        const loadingIdx = [...updated].reverse().findIndex(m => m.isLoading);
+        const realIdx = loadingIdx !== -1 ? updated.length - 1 - loadingIdx : -1;
+        if (realIdx !== -1) {
+          updated[realIdx] = { role: 'ai', content: 'عذراً، حدث خطأ أثناء المعالجة. يرجى المحاولة مرة أخرى.' };
         }
         return updated;
       });
