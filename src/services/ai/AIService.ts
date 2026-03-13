@@ -509,45 +509,7 @@ class AIService {
         }
     }
 
-    // ---- UNUSED LEGACY (kept for reference but replaced by Edge Function) ----
-    private _legacyChat_unused(agentType: string, message: string, contextObj?: any, clinicId?: string, sessionId?: string) {
-        // Legacy direct API calls - now routed through ai-agent edge function
-        const baseURL = 'https://api.openai.com/v1';
-
-        try {
-            const response = await fetch(`${baseURL}/chat/completions`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiKey} `
-                },
-                body: JSON.stringify({
-                    model: config.model || 'gpt-3.5-turbo',
-                    messages: [
-                        { role: 'system', content: systemContent },
-                        { role: 'user', content: message }
-                    ],
-                    temperature: config.temperature
-                })
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error?.message || 'Chat API Error');
-            }
-
-            const data = await response.json();
-
-            const tokens = data.usage?.total_tokens || 0;
-            this.logUsage(agentType, tokens, 'text_chat', userId, clinicId ? parseInt(clinicId) : undefined, sessionId);
-
-            return data.choices[0].message.content;
-
-        } catch (error) {
-            console.error('[AI-Service] Chat Failed:', error);
-            return "عذراً، حدث خطأ أثناء الاتصال بالخادم الذكي.";
-        }
-    }
+    // Legacy code removed - all AI calls now route through ai-agent edge function
 
     // --- Mock Fallbacks (Preserved for Demo) ---
     private getMockAnalysis(): AIAnalysisResult {
