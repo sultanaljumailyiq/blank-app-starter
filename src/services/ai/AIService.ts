@@ -472,71 +472,47 @@ class AIService {
     }
 
     async chat(agentType: string, message: string, contextObj?: any, userId?: string, clinicId?: string, sessionId?: string): Promise<string> {
-        // Resolve IDs if not provided (similar to analyzeImage, but maybe simpler here if passed in)
-        // For consistency, let's trust passed in IDs or resolve them if missing?
-        // Actually, let's just optimize validation:
-        if (userId && clinicId) {
-            try {
-                await this.checkUsageLimit(parseInt(clinicId)); // Ensure number
-                await this.checkStaffPermission(userId, parseInt(clinicId));
-            } catch (e: any) {
-                return e.message; // Return error as chat response for better UX? Or throw?
-                // For chat, returning message is often better so UI doesn't crash.
-            }
-        }
-
-        if (!this.initialized) await this.loadConfigs();
-
-        const config = this.getConfig(agentType);
-        if (!config.isActive) return 'نأسف، هذه الخدمة غير مفعلة حالياً.';
-
-        const apiKey = config.apiKey || this.getApiKey(config.provider);
-        if (!apiKey) {
-            console.warn('[AI-Service] Chat: No API Key. Using Mock.');
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            return this.getMockChatResponse(agentType, message, contextObj);
-        }
-
-        const systemContent = config.systemRules + (contextObj ? `\n\nContext Data: ${JSON.stringify(contextObj)} ` : "");
-
-        console.log(`[AI-Service] Chat Request -> Provider: ${config.provider}, Model: ${config.model}`);
-
-        if (config.provider === 'google') {
-            try {
-                const modelName = config.model || 'gemini-1.5-pro';
-                // Remove 'models/' prefix if present to avoid duplication
-                const cleanModel = modelName.replace('models/', '');
-
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${apiKey}`, {
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const response = await fetch(
+                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-agent`,
+                {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+                        'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+                    },
                     body: JSON.stringify({
-                        contents: [{ parts: [{ text: systemContent + "\n" + message }] }]
+                        agent_type: agentType,
+                        message,
+                        context: contextObj,
+                        session_id: sessionId,
+                        clinic_id: clinicId ? parseInt(clinicId) : undefined,
                     })
-                });
-
-                if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.error?.message || 'Gemini API Error');
                 }
+            );
 
-                const data = await response.json();
-                const content = data.candidates?.[0]?.content?.parts?.[0]?.text || "No response";
-
-                // Estimate tokens (Gemini doesn't always return usage in simple response)
-                const tokens = content.length / 4;
-                this.logUsage(agentType, Math.ceil(tokens), 'text_chat', userId, clinicId ? parseInt(clinicId) : undefined, sessionId);
-
-                return content;
-
-            } catch (e) {
-                console.error('Gemini Chat Error:', e);
-                return "عذراً، حدث خطأ أثناء الاتصال بـ Google Gemini.";
+            if (!response.ok) {
+                const errorData = await response.json();
+                if (response.status === 429) return 'تم تجاوز الحد المسموح. يرجى المحاولة لاحقاً.';
+                if (response.status === 402) return 'رصيد الذكاء الاصطناعي غير كافٍ. يرجى إضافة رصيد.';
+                return errorData.error || 'عذراً، حدث خطأ أثناء الاتصال بالخادم الذكي.';
             }
-        }
 
-        // --- 3. OpenAI / DeepSeek (Compatible) Logic ---
-        const baseURL = config.provider === 'deepseek' ? 'https://api.deepseek.com' : 'https://api.openai.com/v1';
+            const data = await response.json();
+            return data.response || 'لا يوجد رد.';
+
+        } catch (error) {
+            console.error('[AI-Service] Chat Failed:', error);
+            return 'عذراً، حدث خطأ أثناء الاتصال بالخادم الذكي.';
+        }
+    }
+
+    // ---- UNUSED LEGACY (kept for reference but replaced by Edge Function) ----
+    private _legacyChat_unused(agentType: string, message: string, contextObj?: any, clinicId?: string, sessionId?: string) {
+        // Legacy direct API calls - now routed through ai-agent edge function
+        const baseURL = 'https://api.openai.com/v1';
 
         try {
             const response = await fetch(`${baseURL}/chat/completions`, {
