@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { UserPlus, Mail, Lock, User, Phone, CheckCircle, Building, Stethoscope, Package, TestTube, Settings, MapPin } from 'lucide-react';
+import { UserPlus, Mail, Lock, User, Phone, CheckCircle, Building, Stethoscope, Package, TestTube, Settings, MapPin, Eye, EyeOff } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { Card } from '../../components/common/Card';
@@ -22,17 +22,20 @@ export const RegisterPage: React.FC = () => {
     address: '',
     password: '',
     confirmPassword: '',
-    accountType: 'doctor' as 'doctor' | 'supplier' | 'laboratory' | 'admin',
+    accountType: 'doctor' as 'doctor' | 'supplier' | 'laboratory',
     agreeToTerms: false
   });
 
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // تحديث نوع الحساب بناءً على query parameter
   useEffect(() => {
     const type = searchParams.get('type');
-    if (type && ['doctor', 'supplier', 'laboratory', 'admin'].includes(type)) {
+    if (type && ['doctor', 'supplier', 'laboratory'].includes(type)) {
       setFormData(prev => ({ ...prev, accountType: type as any }));
     }
   }, [searchParams]);
@@ -52,8 +55,8 @@ export const RegisterPage: React.FC = () => {
 
     if (!formData.phone.trim()) {
       newErrors.phone = 'رقم الهاتف مطلوب';
-    } else if (!/^\+964\d{10}$/.test(formData.phone)) {
-      newErrors.phone = 'رقم الهاتف يجب أن يبدأ بـ +964 ويتبعه 10 أرقام';
+    } else if (!/^\d{10,11}$/.test(formData.phone)) {
+      newErrors.phone = 'رقم الهاتف يجب أن يتكون من 10 أو 11 رقماً';
     }
 
     if (!formData.password) {
@@ -84,32 +87,19 @@ export const RegisterPage: React.FC = () => {
     setLoading(true);
 
     try {
-      // محاكاة عملية التسجيل
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await register(
+        formData.email,
+        formData.password,
+        formData.fullName,
+        formData.accountType as any,
+        `+964${formData.phone}`
+      );
 
-      // بعد التسجيل الناجح، تسجيل الدخول تلقائياً
-      await login(formData.email, formData.password, formData.accountType);
-
-      // التوجيه إلى المركز المناسب
-      switch (formData.accountType) {
-        case 'doctor':
-          navigate('/doctor');
-          break;
-        case 'supplier':
-          navigate('/supplier');
-          break;
-        case 'laboratory':
-          navigate('/laboratory');
-          break;
-        case 'admin':
-          navigate('/admin');
-          break;
-        default:
-          navigate('/');
-      }
+      // Show success screen instead of redirecting immediately
+      setRegistrationSuccess(true);
     } catch (error) {
       console.error('Registration error:', error);
-      alert('حدث خطأ أثناء التسجيل. حاول مرة أخرى.');
+      alert('حدث خطأ أثناء التسجيل. سجل الدخول إذا كان حسابك موجوداً، أو حاول مرة أخرى.');
     } finally {
       setLoading(false);
     }
@@ -122,6 +112,37 @@ export const RegisterPage: React.FC = () => {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
   };
+
+  if (registrationSuccess) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-primary via-primary-dark to-blue-900 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md my-8 text-center p-8 shadow-2xl">
+          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Mail className="w-10 h-10 text-green-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">إنشاء الحساب ناجح!</h2>
+          <div className="bg-blue-50 text-blue-800 p-4 rounded-lg mb-6 text-right">
+            <p className="font-medium mb-2">الخطوة التالية:</p>
+            <p className="text-sm">
+              لقد أرسلنا رسالة تأكيد إلى بريدك الإلكتروني:
+              <br />
+              <strong className="block mt-1 text-center" dir="ltr">{formData.email}</strong>
+            </p>
+            <p className="text-sm mt-3 border-t border-blue-200 pt-3">
+              يرجى التحقق من بريدك (وصندوق الرسائل غير المرغوب فيها Spam) والضغط على رابط التفعيل لتتمكن من تسجيل الدخول.
+            </p>
+          </div>
+          <Button
+            onClick={() => navigate('/login')}
+            className="w-full"
+            variant="primary"
+          >
+            الانتقال لصفحة تسجيل الدخول
+          </Button>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary via-primary-dark to-blue-900 flex items-center justify-center p-4">
@@ -141,7 +162,7 @@ export const RegisterPage: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-3">
               نوع الحساب
             </label>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <button
                 type="button"
                 onClick={() => handleInputChange('accountType', 'doctor')}
@@ -179,19 +200,6 @@ export const RegisterPage: React.FC = () => {
                 <TestTube className="w-8 h-8 mx-auto mb-2 text-primary" />
                 <p className="font-medium text-gray-900">مختبر أسنان</p>
                 <p className="text-xs text-gray-500 mt-1">للمختبرات الطبية</p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleInputChange('accountType', 'admin')}
-                className={`p-4 rounded-lg border-2 transition-all ${formData.accountType === 'admin'
-                  ? 'border-primary bg-primary/10'
-                  : 'border-gray-200 hover:border-primary/50'
-                  }`}
-              >
-                <Settings className="w-8 h-8 mx-auto mb-2 text-primary" />
-                <p className="font-medium text-gray-900">إدارة المنصة</p>
-                <p className="text-xs text-gray-500 mt-1">لمالك النظام</p>
               </button>
             </div>
           </div>
@@ -240,15 +248,26 @@ export const RegisterPage: React.FC = () => {
                   <Phone className="w-4 h-4 inline ml-1" />
                   رقم الهاتف
                 </label>
-                <Input
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) => handleInputChange('phone', e.target.value)}
-                  placeholder="+964 770 123 4567"
-                  className={errors.phone ? 'border-red-500' : ''}
-                />
+                <div className="flex" dir="ltr">
+                  <div className="flex items-center justify-center px-4 bg-gray-50 border border-gray-300 rounded-s-lg border-e-0 text-gray-600 font-medium">
+                    +964
+                  </div>
+                  <input
+                    type="tel"
+                    dir="ltr"
+                    value={formData.phone}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '');
+                      if (val.length <= 11) {
+                        handleInputChange('phone', val);
+                      }
+                    }}
+                    placeholder="770 123 4567"
+                    className={`flex-1 min-w-0 px-4 py-2 border ${errors.phone ? 'border-red-500' : 'border-gray-300'} rounded-e-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all`}
+                  />
+                </div>
                 {errors.phone && (
-                  <p className="text-red-500 text-xs mt-1">{errors.phone}</p>
+                  <p className="text-red-500 text-xs mt-1 text-right">{errors.phone}</p>
                 )}
               </div>
             </div>
@@ -291,13 +310,23 @@ export const RegisterPage: React.FC = () => {
                   <Lock className="w-4 h-4 inline ml-1" />
                   كلمة المرور
                 </label>
-                <Input
-                  type="password"
-                  value={formData.password}
-                  onChange={(e) => handleInputChange('password', e.target.value)}
-                  placeholder="••••••••"
-                  className={errors.password ? 'border-red-500' : ''}
-                />
+                <div className="relative">
+                  <Input
+                    type={showPassword ? 'text' : 'password'}
+                    value={formData.password}
+                    onChange={(e) => handleInputChange('password', e.target.value)}
+                    placeholder="••••••••"
+                    className={errors.password ? 'border-red-500' : ''}
+                    dir="ltr"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 p-1"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
                 {errors.password && (
                   <p className="text-red-500 text-xs mt-1">{errors.password}</p>
                 )}
@@ -308,13 +337,23 @@ export const RegisterPage: React.FC = () => {
                   <Lock className="w-4 h-4 inline ml-1" />
                   تأكيد كلمة المرور
                 </label>
-                <Input
-                  type="password"
-                  value={formData.confirmPassword}
-                  onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
-                  placeholder="••••••••"
-                  className={errors.confirmPassword ? 'border-red-500' : ''}
-                />
+                <div className="relative">
+                  <Input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    value={formData.confirmPassword}
+                    onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
+                    placeholder="••••••••"
+                    className={errors.confirmPassword ? 'border-red-500' : ''}
+                    dir="ltr"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 p-1"
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
                 {errors.confirmPassword && (
                   <p className="text-red-500 text-xs mt-1">{errors.confirmPassword}</p>
                 )}

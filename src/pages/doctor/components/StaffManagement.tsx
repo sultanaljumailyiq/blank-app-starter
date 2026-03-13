@@ -11,7 +11,7 @@ interface StaffManagementProps {
 }
 
 export const StaffManagement: React.FC<StaffManagementProps> = ({ clinicId }) => {
-    const { staff, loading, addStaff, updateStaff, deleteStaff, sendInvitation } = useStaff(clinicId);
+    const { staff, loading, addStaff, updateStaff, deleteStaff, sendInvitation, cancelInvitation } = useStaff(clinicId);
     const [searchTerm, setSearchTerm] = useState('');
     const [showModal, setShowModal] = useState(false);
     const [selectedRole, setSelectedRole] = useState<string>('all');
@@ -98,28 +98,46 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ clinicId }) =>
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className={`px-2 py-1 text-xs rounded-full ${member.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                            {member.status === 'active' ? 'نشط' : 'غير نشط'}
+                                        <span className={`px-2 py-1 text-xs rounded-full ${member.status === 'active' ? 'bg-green-100 text-green-700' :
+                                                member.status === 'pending' ? 'bg-yellow-100 text-yellow-700 border border-yellow-200 border-dashed' :
+                                                    'bg-red-100 text-red-700'
+                                            }`}>
+                                            {member.status === 'active' ? 'نشط' :
+                                                member.status === 'pending' ? 'في الانتظار' : 'غير نشط'}
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-500">
                                         -
                                     </td>
                                     <td className="px-6 py-4">
-                                        <div className="flex items-center gap-2">
+                                        {member.status === 'pending' ? (
                                             <button
-                                                onClick={() => handleEdit(member)}
-                                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                onClick={async () => {
+                                                    if (confirm('هل أنت متأكد من إلغاء الدعوة؟')) {
+                                                        if (cancelInvitation) await cancelInvitation(member.id);
+                                                    }
+                                                }}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors text-xs font-medium border border-red-200 bg-white"
                                             >
-                                                <Edit2 className="w-4 h-4" />
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                                إلغاء الدعوة
                                             </button>
-                                            <button
-                                                onClick={() => handleDelete(member.id)}
-                                                className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </div>
+                                        ) : (
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => handleEdit(member)}
+                                                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                >
+                                                    <Edit2 className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDelete(member.id)}
+                                                    className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        )}
                                     </td>
                                 </tr>
                             ))

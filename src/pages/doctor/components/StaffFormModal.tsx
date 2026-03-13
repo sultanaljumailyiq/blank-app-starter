@@ -133,7 +133,14 @@ export const StaffFormModal: React.FC<StaffFormModalProps> = ({
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        await onSave(formData);
+
+        // Force 'pending' status for newly linked existing accounts
+        let dataToSave = { ...formData };
+        if (!initialData && dataToSave.isLinkedAccount && dataToSave.userId) {
+            dataToSave.status = 'pending';
+        }
+
+        await onSave(dataToSave);
         onClose();
     };
 

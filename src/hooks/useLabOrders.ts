@@ -281,6 +281,7 @@ export const useLabOrders = (options?: { clinicId?: string, laboratoryId?: strin
             const order = orders.find(o => o.id === orderId);
             if (order && order.clinic_id) {
                 await sendNotification({
+                    target_user_id: order.doctor_id,
                     clinic_id: order.clinic_id,
                     type: 'order_update',
                     title: `تحديث حالة الطلب #${order.order_number}`,

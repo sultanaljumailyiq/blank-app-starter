@@ -14,7 +14,7 @@ export interface StaffMember {
     role_title?: string;
     position: 'doctor' | 'assistant' | 'nurse' | 'receptionist' | 'admin' | 'technician';
     salary: number;
-    status: 'active' | 'on_leave' | 'suspended' | 'terminated';
+    status: 'active' | 'on_leave' | 'suspended' | 'terminated' | 'pending';
     hireDate: string;
     address: string;
     qualifications: string[];
@@ -82,34 +82,23 @@ export const useStaff = (clinicId?: string) => {
             if (clinicId) {
                 query = query.eq('clinic_id', clinicId);
             }
-            // ...
-            // ... skipped lines ...
-            const deleteStaff = async (id: string) => {
-                try {
-                    // Soft delete
-                    const { error } = await supabase
-                        .from('staff')
-                        .update({ deleted_at: new Date().toISOString() })
-                        .eq('id', id);
 
-                    if (error) throw error;
+            const invitationsPromise = clinicId
+                ? supabase.from('clinic_invitations').select('*').eq('clinic_id', clinicId).eq('status', 'pending')
+                : Promise.resolve({ data: [], error: null });
 
-                    await logActivity('delete_staff', id, { reason: 'Soft delete from UI' });
-                    toast.success('تم حذف الموظف بنجاح (يمكنك الاستعادة من سجل النشاطات)');
-                    fetchStaff();
-                } catch (error) {
-                    console.error('Error deleting staff:', error);
-                    toast.error('فشل حذف الموظف');
-                }
-            };
-            // else: RLS should handle filtering by owner/doctor
+            const [staffRes, invitationsRes] = await Promise.all([
+                query,
+                invitationsPromise
+            ]);
 
-            const { data, error } = await query;
+            if (staffRes.error) throw staffRes.error;
+            if (invitationsRes.error) throw invitationsRes.error;
 
-            if (error) throw error;
+            let allStaff: StaffMember[] = [];
 
-            if (data) {
-                const mappedStaff: StaffMember[] = data.map((s: any) => ({
+            if (staffRes.data) {
+                const mappedStaff: StaffMember[] = staffRes.data.map((s: any) => ({
                     id: s.id.toString(),
                     clinicId: s.clinic_id?.toString() || clinicId,
                     authUserId: s.auth_user_id,
@@ -151,8 +140,39 @@ export const useStaff = (clinicId?: string) => {
                     userId: s.user_id,
                     isLinkedAccount: s.is_linked_account
                 }));
-                setStaff(mappedStaff);
+                allStaff = [...allStaff, ...mappedStaff];
             }
+
+            if (invitationsRes.data) {
+                const mappedInvitations: StaffMember[] = invitationsRes.data.map((inv: any) => ({
+                    id: inv.id.toString(), // Use invitation ID
+                    clinicId: inv.clinic_id.toString(),
+                    name: inv.email.split('@')[0], // Fallback name
+                    phone: '-',
+                    email: inv.email,
+                    department: '-',
+                    position: inv.role as any,
+                    salary: 0,
+                    status: 'pending',
+                    hireDate: inv.created_at,
+                    address: '',
+                    qualifications: [],
+                    certifications: [],
+                    workSchedule: { days: [], startTime: '09:00', endTime: '17:00', breaks: [] },
+                    attendance: { present: 0, absent: 0, late: 0, overtime: 0 },
+                    performance: { rating: 0, lastReview: '', achievements: [], goals: [] },
+                    skills: [],
+                    languages: ['العربية'],
+                    notes: '',
+                    permissions: {
+                        appointments: false, patients: false, financials: false, settings: false, reports: false, activityLog: false, assets: false, staff: false, manageStaff: false, lab: false, assistantManager: false
+                    },
+                    isLinkedAccount: false
+                }));
+                allStaff = [...allStaff, ...mappedInvitations];
+            }
+
+            setStaff(allStaff);
         } catch (error) {
             console.error('Error fetching staff:', error);
             toast.error('فشل تحميل بيانات الموظفين');
@@ -291,6 +311,34 @@ export const useStaff = (clinicId?: string) => {
         }
     };
 
+    const cancelInvitation = async (invitationId: string) => {
+        try {
+            // Try cancelling from clinic_invitations
+            const { error: inviteError } = await supabase
+                .from('clinic_invitations')
+                .update({ status: 'cancelled' })
+                .eq('id', invitationId);
+
+            if (inviteError) throw inviteError;
+
+            // Try cancelling from staff (if it was a linked account pending request)
+            const { error: staffError } = await supabase
+                .from('staff')
+                .update({ status: 'terminated', is_active: false }) // Soft delete or mark terminated
+                .eq('id', invitationId)
+                .eq('status', 'pending');
+
+            if (staffError) throw staffError;
+
+            toast.success('تم إلغاء الدعوة بنجاح');
+            await logActivity('cancel_invitation', 'invitation', { invitationId });
+            fetchStaff();
+        } catch (error) {
+            console.error('Error cancelling invitation:', error);
+            toast.error('فشل إلغاء الدعوة');
+        }
+    };
+
     const logActivity = async (action: string, entityId: string, details: any) => {
         try {
             await supabase.from('activity_logs').insert({
@@ -321,6 +369,7 @@ export const useStaff = (clinicId?: string) => {
         },
         deleteStaff,
         refresh: fetchStaff,
-        sendInvitation
+        sendInvitation,
+        cancelInvitation
     };
 };

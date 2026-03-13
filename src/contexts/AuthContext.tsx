@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef, useCallb
 import { User, UserRole } from '../types';
 import { supabase } from '../lib/supabase';
 import { toast } from 'sonner';
+import { sendRoleNotification } from '../lib/notifications';
 
 interface AuthContextType {
   user: User | null;
@@ -183,6 +184,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
         toast.success('تم إنشاء الحساب بنجاح');
+
+        // Notify Admins about new professional accounts
+        if (role === 'supplier') {
+          await sendRoleNotification('admin', 'طلب انضمام مورد جديد', `قام ${name} بالتسجيل كمورد جديد بانتظار المراجعة.`, '/admin/suppliers');
+        } else if (role === 'laboratory') {
+          await sendRoleNotification('admin', 'طلب انضمام مختبر جديد', `قام ${name} بالتسجيل كمختبر جديد بانتظار المراجعة.`, '/admin/labs');
+        }
+
         // onAuthStateChange will handle fetchProfile
       }
     } catch (error: any) {
