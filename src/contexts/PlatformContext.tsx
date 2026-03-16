@@ -27,8 +27,16 @@ const PlatformContext = createContext<PlatformContextType>({
 export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [settings, setSettings] = useState<PlatformSettings>({});
     const [loading, setLoading] = useState(true);
+    const cache = useLocalCache();
 
     const fetchSettings = async () => {
+        // Load from cache first for instant offline display
+        const cached = cache.get<PlatformSettings>('platform_settings');
+        if (cached) {
+            setSettings(cached);
+            setLoading(false);
+        }
+
         try {
             const { data, error } = await supabase
                 .from('admin_settings')
@@ -38,6 +46,8 @@ export const PlatformProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
             if (data) {
                 setSettings(data.value);
+                // Cache for 1 hour (3600s)
+                cache.set('platform_settings', data.value, 3600);
             }
         } catch (error) {
             console.error('Error fetching platform settings:', error);
