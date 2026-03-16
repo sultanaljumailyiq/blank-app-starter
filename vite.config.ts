@@ -20,6 +20,7 @@ export default defineConfig(({ mode }) => {
         includeAssets: ['favicon.ico', 'logo192.png', 'logo512.png'],
         workbox: {
           navigateFallbackDenylist: [/^\/~oauth/],
+          maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // 4 MiB
           runtimeCaching: [
             {
               // CacheFirst for static assets
