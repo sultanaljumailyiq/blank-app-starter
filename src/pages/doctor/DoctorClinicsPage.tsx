@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { supabase } from '../../lib/supabase';
 import { Building2, MapPin, Plus, Settings, Users, Shield, LayoutDashboard, Star, Phone, Clock, Activity, Trash2, AlertTriangle, Lock, CheckCircle, Mail, Check, X } from 'lucide-react';
 import { useInvitations } from '../../hooks/useInvitations';
 import { toast } from 'sonner';
@@ -27,7 +28,7 @@ export const DoctorClinicsPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth(); // Added user hook
   // Removed duplicate hook call from here, moving it down to use selectedClinic state
-  const isStaff = user?.role === 'staff'; // Added staff check
+  const isSystemStaff = user?.role === 'staff'; // System-level staff flag
   const { selectedClinicId } = useDoctorContext(); // Get global filter
 
   const [selectedClinic, setSelectedClinic] = useState<string | null>(null);
@@ -53,9 +54,21 @@ export const DoctorClinicsPage: React.FC = () => {
   // Real Data
   const { appointments } = useAppointments();
   const { patients } = usePatients(undefined); // Fetch all patients
-  const { staff, updateStaff } = useStaff(); // Fetch all staff (filtered by RLS)
+  const { staff, updateStaff, leaveClinic } = useStaff(); // Fetch all staff (filtered by RLS)
   const { invitations, respondToInvitation, refresh: refreshInvitations } = useInvitations();
   const { clinics, loading, addClinic, updateClinic, deleteClinic, refresh: refreshClinics } = useClinics();
+
+  // Handler for staff member to leave a clinic
+  const handleLeaveClinic = async (clinicId: string) => {
+    if (!user?.id) return;
+    if (!confirm('هل أنت متأكد من الخروج من هذه العيادة؟ لن تتمكن من الوصول إليها بعد ذلك.')) return;
+    try {
+      await leaveClinic(clinicId, user.id);
+      await refreshClinics();
+    } catch (err) {
+      // Error handled inside leaveClinic
+    }
+  };
 
   // New Clinic Form State
   const [newClinic, setNewClinic] = useState({
@@ -277,7 +290,14 @@ export const DoctorClinicsPage: React.FC = () => {
     }
   };
 
+
+
+
   const currentClinic = clinics.find(c => c.id === selectedClinic);
+  const isCurrentClinicOwner = currentClinic && currentClinic.owner_id === user?.id;
+  const selectedClinicPermissions = staff.find(
+    s => String(s.clinicId) === String(selectedClinic) && s.email === user?.email
+  )?.permissions;
 
   if (loading && clinics.length === 0) return <div className="p-8 text-center">جاري التحميل...</div>;
 
@@ -287,9 +307,9 @@ export const DoctorClinicsPage: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">عياداتي</h1>
-          <p className="text-gray-600 mt-1">إدارة جميع عياداتك في مكان واحد ({clinics.length} عيادة نشطة)</p>
+          <p className="text-gray-600 mt-1">إدارة جميع عياداتك المستهدفة ({clinics.length} عيادات مشتركة)</p>
         </div>
-        {!isStaff && (
+        {!isSystemStaff && (
           <Button
             variant="primary"
             className="flex items-center gap-2"
@@ -313,104 +333,111 @@ export const DoctorClinicsPage: React.FC = () => {
       </div>
 
 
-      {/* Pending Invitations Section */}
-      {invitations.length > 0 && (
-        <div className="mb-10 animate-in fade-in slide-in-from-top-4">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="bg-purple-100 p-2 rounded-lg">
-              <Mail className="w-6 h-6 text-purple-600" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-gray-900">دعوات الانضمام</h2>
-              <p className="text-gray-600 text-sm">لديك {invitations.length} دعوة جديدة للانضمام إلى عيادات أخرى</p>
-            </div>
-          </div>
+      {/* Clinics Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Pending Invitations */}
+        {invitations.map((invitation) => {
+          const clinic = invitation.clinic;
+          if (!clinic) return null;
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {invitations.map((invitation) => (
-              <Card key={invitation.id} className="overflow-hidden border-2 border-purple-100 hover:border-purple-300 transition-all shadow-sm hover:shadow-md">
-                {/* Image Area */}
-                <div className="h-32 relative bg-gray-100 flex items-center justify-center">
-                  {invitation.clinic?.coverImage ? (
-                    <img src={invitation.clinic.coverImage} alt={invitation.clinic.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <Building2 className="w-12 h-12 text-gray-300" />
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-purple-900/60 to-transparent flex items-end p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full border-2 border-white bg-white overflow-hidden flex items-center justify-center">
-                        {invitation.clinic?.image ? (
-                          <img src={invitation.clinic.image} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          <Building2 className="w-5 h-5 text-gray-400" />
-                        )}
-                      </div>
-                      <span className="text-white font-bold text-lg drop-shadow-sm truncate">{invitation.clinic?.name || 'عيادة غير معروفة'}</span>
+          return (
+            <Card key={`inv-${invitation.id}`} className="overflow-hidden border-2 border-dashed border-purple-200 bg-white/50 backdrop-blur-sm transition-all relative">
+              <div className="absolute top-4 left-4 z-10 bg-purple-600 text-white px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1 shadow-lg">
+                <Mail className="w-3 h-3" />
+                دعوة انضمام
+              </div>
+              
+              {/* Clinic Image */}
+              <div className="h-32 relative overflow-hidden group-hover:scale-105 transition-transform duration-500">
+                <img
+                  src={clinic.coverImage || clinic.image}
+                  alt={clinic.name}
+                  className="w-full h-full object-cover grayscale-[30%]"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent"></div>
+                <div className="absolute bottom-0 right-0 p-4">
+                  {/* Logo Overlay */}
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full border-2 border-white/50 overflow-hidden bg-white/10 backdrop-blur-sm">
+                      <img src={clinic.image} alt="" className="w-full h-full object-cover" />
                     </div>
                   </div>
                 </div>
+              </div>
 
-                {/* Content */}
-                <div className="p-5">
-                  <div className="bg-purple-50 rounded-lg p-3 text-sm text-purple-800 mb-4">
-                    <p>دعوة للانضمام كـ <span className="font-bold">{invitation.role === 'doctor' ? 'طبيب' : invitation.role === 'nurse' ? 'ممرض' : invitation.role}</span></p>
-                    <p className="text-xs text-purple-600 mt-1">تاريخ الدعوة: {new Date(invitation.createdAt).toLocaleDateString('ar-EG')}</p>
+              {/* Clinic Info */}
+              <div className="p-6 space-y-4">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900">{clinic.name}</h3>
+                  <div className="flex items-center gap-2 mt-2 text-sm text-gray-600">
+                    <Phone className="w-4 h-4" />
+                    <span dir="ltr">{clinic.phone || 'غير مسجل'}</span>
                   </div>
-
-                  <div className="flex gap-2">
-                    <Button
-                      variant="primary"
-                      className="flex-1 bg-purple-600 hover:bg-purple-700 text-white"
-                      onClick={async () => {
-                        toast.promise(async () => {
-                          await respondToInvitation(invitation.id, true);
-                          await refreshClinics();
-                        }, {
-                          loading: 'جاري قبول الدعوة...',
-                          success: 'تم قبول الدعوة بنجاح!',
-                          error: 'فشل قبول الدعوة'
-                        });
-                      }}
-                    >
-                      <Check className="w-4 h-4 ml-2" />
-                      قبول
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="flex-1 border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
-                      onClick={async () => {
-                        if (confirm('هل أنت متأكد من رفض هذه الدعوة؟')) {
-                          try {
-                            await respondToInvitation(invitation.id, false);
-                            toast.success('تم رفض الدعوة');
-                          } catch (e) {
-                            toast.error('حدث خطأ أثناء رفض الدعوة');
-                          }
-                        }
-                      }}
-                    >
-                      <X className="w-4 h-4 ml-2" />
-                      رفض
-                    </Button>
+                  
+                  <div className="bg-purple-50 rounded-lg p-3 text-sm text-purple-800 mt-4 border border-purple-100 flex items-center gap-2">
+                    <Shield className="w-4 h-4 flex-shrink-0" />
+                    <p>المنصب المقترح: <span className="font-bold">{invitation.role === 'doctor' ? 'طبيب' : invitation.role === 'nurse' ? 'ممرض' : invitation.role === 'receptionist' ? 'إستقبال' : invitation.role}</span></p>
                   </div>
                 </div>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
 
-      {/* Clinics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {/* Actions */}
+                <div className="grid grid-cols-2 gap-2 pt-4 border-t border-purple-100">
+                  <Button
+                    variant="primary"
+                    className="flex-1 bg-purple-600 hover:bg-purple-700 text-white"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      toast.promise(async () => {
+                        await respondToInvitation(invitation.id, true);
+                        await Promise.all([refreshClinics(), refreshInvitations()]);
+                      }, {
+                        loading: 'جاري قبول الدعوة...',
+                        success: 'تم قبول الدعوة بنجاح!',
+                        error: 'فشل قبول الدعوة'
+                      });
+                    }}
+                  >
+                    <Check className="w-4 h-4 ml-1" />
+                    قبول
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (confirm('هل أنت متأكد من رفض هذه الدعوة؟')) {
+                        try {
+                          await respondToInvitation(invitation.id, false);
+                          toast.success('تم رفض الدعوة');
+                        } catch (err) {
+                          toast.error('حدث خطأ أثناء رفض الدعوة');
+                        }
+                      }
+                    }}
+                  >
+                    <X className="w-4 h-4 ml-1" />
+                    رفض
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+
+        {/* Real Clinics */}
         {clinics
           .filter(c => {
-            // Staff: Show only their assumed primary clinic
-            if (isStaff) return clinics.length > 0 && c.id === clinics[0].id;
-            // Owner: Show all if 'all' selected, otherwise specific
             if (selectedClinicId === 'all') return true;
             return c.id === selectedClinicId;
           })
-          .map((clinic) => (
+          .map((clinic) => {
+            const isClinicStaff = clinic.owner_id !== user?.id; // Determine per-clinic specific role
+            const userStaffRecord = staff.find(
+              s => String(s.clinicId) === String(clinic.id) && s.email === user?.email
+            );
+            const userPermissions = userStaffRecord?.permissions;
+
+            return (
             <Card key={clinic.id} className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer" onClick={(e) => {
               if ((e.target as HTMLElement).closest('button')) return;
               navigate(`/doctor/clinic/${clinic.id}`);
@@ -493,10 +520,11 @@ export const DoctorClinicsPage: React.FC = () => {
                     <span className="text-xs font-medium">لوحة التحكم</span>
                   </button>
 
-                  {/* Settings Button: Owner OR Staff with 'settings' permission */}
-                  {(!isStaff || staff.find(s => s.email === user?.email)?.permissions?.settings) && (
+                  {/* Settings Button: Owner Only */}
+                  {(!isClinicStaff || userPermissions?.settings) && (
                     <button
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         setSelectedClinic(clinic.id);
                         setActiveTab('settings');
                         setShowSettings(true);
@@ -510,7 +538,7 @@ export const DoctorClinicsPage: React.FC = () => {
                 </div>
 
                 {/* Owner Only Actions */}
-                {!isStaff && (
+                {!isClinicStaff && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -524,8 +552,8 @@ export const DoctorClinicsPage: React.FC = () => {
                   </button>
                 )}
 
-                {/* Activity Log: Owner OR Staff with 'activityLog' permission */}
-                {(!isStaff || staff.find(s => s.email === user?.email)?.permissions?.activityLog) && (
+                {/* Activity Log: Owner Only */}
+                {(!isClinicStaff || userPermissions?.activityLog) && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -537,13 +565,28 @@ export const DoctorClinicsPage: React.FC = () => {
                     <span className="text-xs font-medium">سجل النشاطات</span>
                   </button>
                 )}
+
+                {/* Staff Only Actions */}
+                {isClinicStaff && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleLeaveClinic(clinic.id);
+                    }}
+                    className="w-full mt-2 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <X className="w-4 h-4" />
+                    <span className="text-xs font-medium">الخروج من العيادة</span>
+                  </button>
+                )}
               </div>
             </Card>
-          ))}
+            );
+          })}
       </div>
 
       {/* Add Clinic Modal - Owner Only */}
-      {!isStaff && (
+      {!isSystemStaff && (
         <Modal
           isOpen={showAddClinic}
           onClose={() => setShowAddClinic(false)}
@@ -612,27 +655,33 @@ export const DoctorClinicsPage: React.FC = () => {
         <div className="flex flex-col h-[600px]">
           {/* Tabs */}
           <div className="flex border-b border-gray-200 mb-6">
-            <button
-              className={`pb-3 px-6 font-medium text-sm transition-colors relative ${activeTab === 'settings' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-              onClick={() => setActiveTab('settings')}
-            >
-              الإعدادات العامة
-              {activeTab === 'settings' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />}
-            </button>
-            <button
-              className={`pb-3 px-6 font-medium text-sm transition-colors relative ${activeTab === 'profile' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-              onClick={() => setActiveTab('profile')}
-            >
-              ملف العيادة
-              {activeTab === 'profile' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />}
-            </button>
-            <button
-              className={`pb-3 px-6 font-medium text-sm transition-colors relative ${activeTab === 'staff_settings' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-              onClick={() => setActiveTab('staff_settings')}
-            >
-              إعدادات الطاقم
-              {activeTab === 'staff_settings' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />}
-            </button>
+            {(isCurrentClinicOwner || selectedClinicPermissions?.settings) && (
+              <button
+                className={`pb-3 px-6 font-medium text-sm transition-colors relative ${activeTab === 'settings' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                onClick={() => setActiveTab('settings')}
+              >
+                الإعدادات العامة
+                {activeTab === 'settings' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />}
+              </button>
+            )}
+            {(isCurrentClinicOwner || selectedClinicPermissions?.settings) && (
+              <button
+                className={`pb-3 px-6 font-medium text-sm transition-colors relative ${activeTab === 'profile' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                onClick={() => setActiveTab('profile')}
+              >
+                ملف العيادة
+                {activeTab === 'profile' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />}
+              </button>
+            )}
+            {(isCurrentClinicOwner || selectedClinicPermissions?.manageStaff) && (
+              <button
+                className={`pb-3 px-6 font-medium text-sm transition-colors relative ${activeTab === 'staff_settings' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                onClick={() => setActiveTab('staff_settings')}
+              >
+                إعدادات الطاقم
+                {activeTab === 'staff_settings' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />}
+              </button>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto px-1">
@@ -1009,7 +1058,7 @@ export const DoctorClinicsPage: React.FC = () => {
             )}
 
             {activeTab === 'staff_settings' && selectedClinic && (
-              <StaffManagement clinicId={selectedClinic} />
+              <StaffManagement clinicId={selectedClinic} clinicOwnerId={currentClinic?.owner_id} />
             )}
           </div>
 

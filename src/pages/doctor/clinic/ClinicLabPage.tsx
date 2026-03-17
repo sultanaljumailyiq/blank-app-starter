@@ -860,6 +860,7 @@ export default function ClinicLabPage({ clinicId }: ClinicLabPageProps) {
           <LabProfileContent
             lab={selectedLabForProfile}
             clinicName={clinicName}
+            clinicId={clinicId || ''}
             onClose={() => setSelectedLabForProfile(null)}
             onRequest={() => {
               setSelectedLabForOrder(selectedLabForProfile);
@@ -899,6 +900,7 @@ export default function ClinicLabPage({ clinicId }: ClinicLabPageProps) {
 const LabProfileContent: React.FC<{
   lab: ClinicLab;
   clinicName: string;
+  clinicId: string;
   onClose: () => void;
   onRequest: () => void;
   onDelete: () => void;
@@ -907,7 +909,7 @@ const LabProfileContent: React.FC<{
   onUpdateStatus: (id: string, status: string, updates?: any) => void;
   onDeleteRequest: (id: string) => void;
   onAddOrder: () => void; // Added onAddOrder prop
-}> = ({ lab, clinicName, onClose, onRequest, onDelete, requests, onViewDetails, onUpdateStatus, onDeleteRequest, onAddOrder }) => {
+}> = ({ lab, clinicName, clinicId, onClose, onRequest, onDelete, requests, onViewDetails, onUpdateStatus, onDeleteRequest, onAddOrder }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'financial' | 'contact'>('overview');
 
   // Filter orders for this specific lab for the 'orders' tab
@@ -1302,7 +1304,7 @@ const LabProfileContent: React.FC<{
 
         {activeTab === 'contact' && (
           <div className="animate-in fade-in slide-in-from-bottom-2 h-[500px] flex flex-col bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
-            <DoctorLabChat labId={lab.id} labName={lab.name} labLogo={lab.logo} />
+            <DoctorLabChat labId={lab.id} labName={lab.name} labLogo={lab.logo} clinicId={clinicId} />
           </div>
         )}
 

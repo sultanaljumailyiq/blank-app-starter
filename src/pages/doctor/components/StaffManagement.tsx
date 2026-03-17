@@ -8,10 +8,11 @@ import { toast } from 'sonner';
 
 interface StaffManagementProps {
     clinicId: string;
+    clinicOwnerId?: string;
 }
 
-export const StaffManagement: React.FC<StaffManagementProps> = ({ clinicId }) => {
-    const { staff, loading, addStaff, updateStaff, deleteStaff, sendInvitation } = useStaff(clinicId);
+export const StaffManagement: React.FC<StaffManagementProps> = ({ clinicId, clinicOwnerId }) => {
+    const { staff, loading, addStaff, updateStaff, deleteStaff, sendInvitation, cancelInvitation, unlinkStaff } = useStaff(clinicId);
     const [searchTerm, setSearchTerm] = useState('');
     const [showModal, setShowModal] = useState(false);
     const [selectedRole, setSelectedRole] = useState<string>('all');
@@ -78,9 +79,13 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ clinicId }) =>
                                 <tr key={member.id} className="hover:bg-gray-50 transition-colors">
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">
-                                                {member.name.charAt(0)}
-                                            </div>
+                                            {member.avatar ? (
+                                                <img src={member.avatar} alt={member.name} className="w-10 h-10 rounded-full object-cover border border-gray-100" />
+                                            ) : (
+                                                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">
+                                                    {member.name.charAt(0)}
+                                                </div>
+                                            )}
                                             <div>
                                                 <div className="font-medium text-gray-900">{member.name}</div>
                                                 <div className="text-xs text-gray-500">{member.email}</div>
@@ -97,29 +102,62 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ clinicId }) =>
                                             <span className="text-xs text-gray-500">{member.department}</span>
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <span className={`px-2 py-1 text-xs rounded-full ${member.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                            {member.status === 'active' ? 'نشط' : 'غير نشط'}
-                                        </span>
-                                    </td>
+                                     <td className="px-6 py-4">
+                                         <div className="flex flex-col gap-0.5">
+                                         <span className={`px-2 py-1 text-xs rounded-full w-fit ${member.status === 'active' ? 'bg-green-100 text-green-700' :
+                                                 member.status === 'pending' ? 'bg-yellow-100 text-yellow-700 border border-yellow-200 border-dashed' :
+                                                     'bg-red-100 text-red-700'
+                                             }`}>
+                                             {member.status === 'active' ? 'نشط' :
+                                                 member.status === 'pending' ? '‏⏳ في الانتظار' : 'غير نشط'}
+                                         </span>
+                                         {member.isLinkedAccount && (
+                                             <span className="text-xs text-blue-600 font-medium">🔗 مربوط</span>
+                                         )}
+                                         </div>
+                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-500">
                                         -
                                     </td>
                                     <td className="px-6 py-4">
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                onClick={() => handleEdit(member)}
-                                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                            >
-                                                <Edit2 className="w-4 h-4" />
-                                            </button>
-                                            <button
-                                                onClick={() => handleDelete(member.id)}
-                                                className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </div>
+                                        {member.status === 'pending' ? (
+                                             <div className="flex items-center gap-2">
+                                                 <button
+                                                     onClick={() => handleEdit(member)}
+                                                     className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                 >
+                                                     <Edit2 className="w-4 h-4" />
+                                                 </button>
+                                                 <button
+                                                     onClick={async () => {
+                                                         if (confirm('هل أنت متأكد من إلغاء الدعوة؟')) {
+                                                             if (cancelInvitation) await cancelInvitation(member.invitationId || member.id);
+                                                         }
+                                                     }}
+                                                     className="flex items-center gap-1.5 px-3 py-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors text-xs font-medium border border-amber-200 bg-white"
+                                                 >
+                                                     <Trash2 className="w-3.5 h-3.5" />
+                                                     إلغاء الدعوة
+                                                 </button>
+                                             </div>
+                                        ) : (
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => handleEdit(member)}
+                                                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                >
+                                                    <Edit2 className="w-4 h-4" />
+                                                </button>
+                                                {member.authUserId !== clinicOwnerId && member.userId !== clinicOwnerId && (
+                                                    <button
+                                                        onClick={() => handleDelete(member.id)}
+                                                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
                                     </td>
                                 </tr>
                             ))
@@ -136,6 +174,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ clinicId }) =>
                     setEditingMember(null);
                 }}
                 initialData={editingMember}
+                clinicId={clinicId}
                 onSave={async (data) => {
                     if (editingMember) {
                         await updateStaff(editingMember.id, data);
@@ -143,9 +182,15 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ clinicId }) =>
                         await addStaff(data as Omit<StaffMember, 'id' | 'clinic_id' | 'role'>);
                     }
                 }}
-                onInvite={async (email, role) => {
-                    const result = await sendInvitation(email, role);
+                onInvite={async (email, role, staffId) => {
+                    const result = await sendInvitation(email, role, staffId);
                     return !!result;
+                }}
+                onCancelInvitation={async (invId) => {
+                    await cancelInvitation(invId);
+                }}
+                onUnlink={async (staffId) => {
+                    await unlinkStaff(staffId);
                 }}
             />
         </div>

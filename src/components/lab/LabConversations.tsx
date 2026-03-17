@@ -88,7 +88,7 @@ export default function LabConversations() {
       // In production, the RPC should return the type
       const mappedData = (data || []).map((conv: any) => ({
         ...conv,
-        type: conv.doctor_id ? 'clinic' : 'admin' // Simple inference for now
+        type: conv.type || (conv.doctor_id ? 'clinic' : 'admin') // Preserve RPC type if exists
       }));
 
       setConversations(mappedData);
@@ -204,7 +204,7 @@ export default function LabConversations() {
 
       // Update conversation last message
       await supabase.from('lab_chat_conversations').update({
-        last_message_content: type === 'image' ? 'صورة مرفقة' : type === 'file' ? 'ملف مرفق' : content.substring(0, 50),
+        last_message: type === 'image' ? 'صورة مرفقة' : type === 'file' ? 'ملف مرفق' : content.substring(0, 50),
         last_message_date: new Date().toISOString()
       }).eq('id', selectedConversation.conversation_id);
 

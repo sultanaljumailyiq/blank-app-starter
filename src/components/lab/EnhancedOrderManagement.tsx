@@ -196,7 +196,7 @@ export default function EnhancedOrderManagement() {
         .from('dental_lab_orders')
         .select(`
           *,
-          clinic:clinics(name, phone, governorate, city)
+          clinic:clinics(name, phone, governorate)
         `)
         .eq('laboratory_id', realLabId)
         .order('created_at', { ascending: false });
@@ -224,7 +224,7 @@ export default function EnhancedOrderManagement() {
           clinic_name: o.clinic?.name || '',
           clinic_phone: o.clinic?.phone || '',
           clinic_governorate: o.clinic?.governorate || '',
-          clinic_city: o.clinic?.city || '',
+          clinic_city: '',
           clinic_id: o.clinic_id,
           service_name: o.service_name || '',
           status: o.status || 'pending',

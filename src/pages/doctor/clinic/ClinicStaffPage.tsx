@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../../../lib/supabase';
 import {
   Users,
   Search,
@@ -48,9 +49,31 @@ export const ClinicStaffPage: React.FC<ClinicStaffPageProps> = ({ clinicId }) =>
   const [showActivityLogModal, setShowActivityLogModal] = useState(false);
 
   // Supabase Hook
-  const { staff, loading, addStaff, updateStaff, sendInvitation } = useStaff(clinicId);
+  const { staff, loading, addStaff, updateStaff, deleteStaff, sendInvitation, cancelInvitation, unlinkStaff } = useStaff(clinicId);
   const { user } = useAuth();
-  const isOwner = user?.role === 'doctor';
+  const [isOwner, setIsOwner] = useState(false);
+  const [clinicOwnerId, setClinicOwnerId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const checkOwner = async () => {
+      if (!clinicId || !user?.id) return;
+      try {
+        const { data, error } = await supabase
+          .from('clinics')
+          .select('owner_id')
+          .eq('id', clinicId)
+          .single();
+        if (error) throw error;
+        const ownerId = data?.owner_id;
+        setClinicOwnerId(ownerId);
+        setIsOwner(ownerId === user.id);
+      } catch (err) {
+        console.error("Error checking clinic owner:", err);
+        setIsOwner(false);
+      }
+    };
+    checkOwner();
+  }, [clinicId, user?.id]);
   const currentStaffPermissions = staff.find(s => s.email === user?.email)?.permissions;
 
 
@@ -99,6 +122,7 @@ export const ClinicStaffPage: React.FC<ClinicStaffPageProps> = ({ clinicId }) =>
       case 'on_leave': return 'text-yellow-600 bg-yellow-100';
       case 'suspended': return 'text-red-600 bg-red-100';
       case 'terminated': return 'text-gray-600 bg-gray-100';
+      case 'pending': return 'text-amber-700 bg-amber-100 border border-amber-300 border-dashed';
       default: return 'text-gray-600 bg-gray-100';
     }
   };
@@ -109,6 +133,7 @@ export const ClinicStaffPage: React.FC<ClinicStaffPageProps> = ({ clinicId }) =>
       case 'on_leave': return 'إجازة';
       case 'suspended': return 'موقوف';
       case 'terminated': return 'منتهي الخدمة';
+      case 'pending': return '⏳ في الانتظار';
       default: return 'غير محدد';
     }
   };
@@ -337,16 +362,18 @@ export const ClinicStaffPage: React.FC<ClinicStaffPageProps> = ({ clinicId }) =>
               </div>
 
               {/* Add Button */}
-              <button
-                onClick={() => {
-                  setEditingStaff(null);
-                  setShowModal(true);
-                }}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                <span className="text-sm font-medium">موظف جديد</span>
-              </button>
+              {(isOwner || currentStaffPermissions?.manageStaff) && (
+                <button
+                  onClick={() => {
+                    setEditingStaff(null);
+                    setShowModal(true);
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span className="text-sm font-medium">موظف جديد</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -379,9 +406,13 @@ export const ClinicStaffPage: React.FC<ClinicStaffPageProps> = ({ clinicId }) =>
                   {/* Staff Header */}
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
-                        {getPositionIcon(member.position)}
-                      </div>
+                      {member.avatar ? (
+                        <img src={member.avatar} alt={member.name} className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm" />
+                      ) : (
+                        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
+                          {getPositionIcon(member.position)}
+                        </div>
+                      )}
                       <div>
                         <h3 className="font-semibold text-gray-900">{member.name}</h3>
                         <p className="text-sm text-gray-600">{member.department}</p>
@@ -391,6 +422,12 @@ export const ClinicStaffPage: React.FC<ClinicStaffPageProps> = ({ clinicId }) =>
                     <div className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(member.status)}`}>
                       {getStatusLabel(member.status)}
                     </div>
+                    {/* Linked account badge below status */}
+                    {member.isLinkedAccount && (
+                      <span className="text-xs text-blue-600 font-medium flex items-center gap-1 mt-1">
+                        🔗 مربوط
+                      </span>
+                    )}
                   </div>
 
                   {/* Contact Info */}
@@ -451,7 +488,34 @@ export const ClinicStaffPage: React.FC<ClinicStaffPageProps> = ({ clinicId }) =>
                     </div>
                   </div>
 
-                  {/* Action Buttons */}
+                  {/* Action Buttons — context-aware for pending invitations */}
+                  {member.status === 'pending' ? (
+                    <div className="flex gap-2 mb-4">
+                      {(isOwner || currentStaffPermissions?.manageStaff || member.authUserId === user?.id || member.userId === user?.id) && (
+                        <button
+                          onClick={() => handleEditStaff(member)}
+                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                        >
+                          <Edit className="w-4 h-4" />
+                          تعديل
+                        </button>
+                      )}
+                      {isOwner && member.authUserId !== clinicOwnerId && member.userId !== clinicOwnerId && (
+                        <button
+                          onClick={async () => {
+                            if (confirm('هل أنت متأكد من إلغاء الدعوة؟')) {
+                              await cancelInvitation(member.invitationId || member.id);
+                            }
+                          }}
+                          className="flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors border border-red-200"
+                        >
+                          <X className="w-4 h-4" />
+                          إلغاء الدعوة
+                        </button>
+                      )}
+                    </div>
+
+                  ) : (
                   <div className="flex gap-2 mb-4">
                     <button
                       onClick={() => handleViewProfile(member)}
@@ -460,16 +524,29 @@ export const ClinicStaffPage: React.FC<ClinicStaffPageProps> = ({ clinicId }) =>
                       <FileText className="w-4 h-4" />
                       عرض الملف
                     </button>
-                    {(isOwner || currentStaffPermissions?.staff) && (
+                    {(isOwner || currentStaffPermissions?.manageStaff || member.authUserId === user?.id || member.userId === user?.id) && (
                       <button
                         onClick={() => handleEditStaff(member)}
-                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                        className="flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
                       >
                         <Edit className="w-4 h-4" />
                         تعديل
                       </button>
                     )}
+                    {(isOwner || currentStaffPermissions?.manageStaff) && member.authUserId !== clinicOwnerId && member.userId !== clinicOwnerId && (
+                      <button
+                        onClick={async () => {
+                          if (confirm('هل أنت متأكد من حذف هذا الموظف نهائياً من طاقم العيادة؟')) {
+                            await deleteStaff(member.id);
+                          }
+                        }}
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors border border-red-100"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -579,6 +656,8 @@ export const ClinicStaffPage: React.FC<ClinicStaffPageProps> = ({ clinicId }) =>
         initialData={editingStaff}
         onSave={handleSave}
         onInvite={sendInvitation}
+        onCancelInvitation={cancelInvitation}
+        onUnlink={unlinkStaff}
         clinicId={clinicId}
       />
 

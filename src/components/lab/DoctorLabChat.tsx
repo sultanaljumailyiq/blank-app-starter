@@ -20,12 +20,13 @@ interface Message {
 interface DoctorLabChatProps {
     orderId?: string;
     labId?: string;
+    clinicId?: string;
     labName: string;
     labLogo?: string;
     onClose?: () => void;
 }
 
-export const DoctorLabChat: React.FC<DoctorLabChatProps> = ({ orderId, labId, labName, labLogo, onClose }) => {
+export const DoctorLabChat: React.FC<DoctorLabChatProps> = ({ orderId, labId, labName, labLogo, onClose, clinicId }) => {
     const { user } = useAuth();
     const [messages, setMessages] = useState<Message[]>([]);
     const [newMessage, setNewMessage] = useState('');
@@ -57,24 +58,65 @@ export const DoctorLabChat: React.FC<DoctorLabChatProps> = ({ orderId, labId, la
         const initChat = async () => {
             if (!user) return;
             if (!orderId && !labId) return;
+            if (labId && !clinicId) return; // Wait for clinicId for isolation
 
             try {
                 setLoading(true);
                 let convId = null;
 
                 if (labId) {
-                    // Start generic chat from clinic to lab
-                    const { data, error } = await supabase.rpc('get_clinic_lab_conversation', {
-                        p_dental_lab_id: labId,
-                        p_user_id: user.id
-                    });
-                    if (error) throw error;
-                    convId = data;
+                    // Resolve lab.id to user_id to satisfy Foreign Key constraint
+                    const { data: labData, error: labErr } = await supabase
+                        .from('dental_laboratories')
+                        .select('user_id')
+                        .eq('id', labId)
+                        .maybeSingle();
+
+                    if (labErr || !labData?.user_id) {
+                        throw new Error("لم يتم العثور على مستخدم لهذا المعمل");
+                    }
+                    const labUserId = labData.user_id;
+
+                    if (clinicId) {
+                        // Client-side lookup using clinicId for strict isolation
+                        const { data: conv, error } = await supabase
+                            .from('lab_chat_conversations')
+                            .select('id')
+                            .eq('clinic_id', Number(clinicId))
+                            .eq('lab_id', labUserId)
+                            .maybeSingle();
+
+                        if (conv) {
+                            convId = conv.id;
+                        } else {
+                            // Create isolated conversation client-side
+                            const { data: newConv, error: insertError } = await supabase
+                                .from('lab_chat_conversations')
+                                .insert({
+                                    clinic_id: Number(clinicId),
+                                    lab_id: labUserId,
+                                    staff_id: staffRecordId, // Replaced doctor_id with staff_id
+                                    created_at: new Date().toISOString()
+                                })
+                                .select('id')
+                                .single();
+                            if (insertError) throw insertError;
+                            convId = newConv.id;
+                        }
+                    } else {
+                        // Fallback to existing RPC if clinicId is missing
+                        const { data, error } = await supabase.rpc('get_clinic_lab_conversation', {
+                            p_dental_lab_id: labId,
+                            p_user_id: user.id
+                        });
+                        if (error) throw error;
+                        convId = data;
+                    }
                 } else if (orderId) {
                     // Start generic chat inferred from order (used by lab side)
                     const { data, error } = await supabase.rpc('create_conversation_for_order', {
                         p_order_id: orderId,
-                        p_doctor_id: user.id
+                        p_staff_id: staffRecordId
                     });
                     if (error) throw error;
                     convId = data;
@@ -94,7 +136,7 @@ export const DoctorLabChat: React.FC<DoctorLabChatProps> = ({ orderId, labId, la
         };
 
         initChat();
-    }, [user, orderId, labId]);
+    }, [user, orderId, labId, clinicId]);
 
     // Fetch Messages Function
     const fetchMessages = async (convId: number) => {
@@ -269,7 +311,7 @@ export const DoctorLabChat: React.FC<DoctorLabChatProps> = ({ orderId, labId, la
 
             // Update conversation last message
             await supabase.from('lab_chat_conversations').update({
-                last_message_content: newMessage,
+                last_message: newMessage,
                 last_message_date: new Date().toISOString()
             }).eq('id', conversationId);
 

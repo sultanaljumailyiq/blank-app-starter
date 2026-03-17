@@ -14,6 +14,7 @@ import { Link } from 'react-router-dom';
 import { PaymentModal } from '../../../components/payment/PaymentModal';
 
 import { useDoctorSubscription } from '../../../hooks/useDoctorSubscription';
+import { sendRoleNotification } from '../../../lib/notifications';
 
 export const UpgradePlanPage: React.FC = () => {
     const { plans: fetchedPlans, coupons } = useAdminSubscriptions();
@@ -275,8 +276,8 @@ export const UpgradePlanPage: React.FC = () => {
             if (receiptImage) {
                 const result = await uploadFile(
                     receiptImage,
-                    'receipts',
-                    `receipt_${user?.id}_${Date.now()}`
+                    'documents',
+                    'receipts'
                 );
                 // Assume uploadFile throws on error or returns null
                 if (!result) throw new Error('فشل رفع الملف');
@@ -313,6 +314,14 @@ export const UpgradePlanPage: React.FC = () => {
                 }]);
 
             if (insertError) throw insertError;
+
+            // Notify Admins
+            await sendRoleNotification(
+                'admin',
+                'طلب اشتراك جديد',
+                `قام ${senderName} بإرسال طلب اشتراك في باقة ${selectedPlan.name}.`,
+                '/admin/subscriptions'
+            );
 
             setShowSuccess(true);
         } catch (error: any) {

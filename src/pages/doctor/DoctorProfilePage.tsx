@@ -16,6 +16,7 @@ import { usePatients } from '../../hooks/usePatients';
 import { useTransactions } from '../../hooks/useTransactions';
 import { supabase } from '../../lib/supabase';
 import { IRAQI_GOVERNORATES } from '../../utils/location';
+import { toast } from 'sonner';
 
 const SubscriptionCard: React.FC = () => {
   const navigate = useNavigate();
@@ -144,6 +145,7 @@ const SubscriptionCard: React.FC = () => {
 export const DoctorProfilePage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Real Data Hooks
   const { clinics } = useClinics();
@@ -207,6 +209,43 @@ export const DoctorProfilePage: React.FC = () => {
 
   const handleCancel = () => {
     setIsEditing(false);
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user?.id) return;
+
+    try {
+      const fileExt = file.name.split('.').pop();
+      const filePath = `${user.id}/${Date.now()}.${fileExt}`;
+
+      // 1. Upload
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      // 2. Get Public URL
+      const { data: urlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      const publicUrl = urlData.publicUrl;
+
+      // 3. Update Profile table
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: publicUrl })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+
+      toast.success('تم تحديث الصورة الشخصية بنجاح');
+      window.location.reload(); 
+    } catch (err: any) {
+      console.error('Upload error:', err);
+    }
   };
 
   const [activeTab, setActiveTab] = useState<'overview' | 'subscriptions' | 'security'>('overview');
@@ -323,21 +362,32 @@ export const DoctorProfilePage: React.FC = () => {
                         </div>
                       )}
                     </div>
-                    {isEditing && (
-                      <button className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Camera className="w-8 h-8 text-white" />
-                      </button>
-                    )}
+                    <button 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                    >
+                      <Camera className="w-8 h-8 text-white" />
+                    </button>
                   </div>
 
                   <h2 className="text-xl font-bold text-gray-900 mb-1">{profileData.name}</h2>
                   <p className="text-gray-500 text-sm mb-4">{profileData.specialization}</p>
 
-                  {isEditing && (
-                    <Button variant="outline" size="sm" className="w-full">
-                      تغيير الصورة
-                    </Button>
-                  )}
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    تغيير الصورة
+                  </Button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                  />
                 </div>
               </Card>
 

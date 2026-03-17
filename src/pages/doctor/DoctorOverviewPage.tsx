@@ -196,23 +196,7 @@ export const DoctorOverviewPage: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            {/* Demo Data Generator */}
-            <div className="flex justify-end">
-                <button
-                    onClick={generateDemoClinicData}
-                    disabled={seeding}
-                    className="flex items-center gap-2 px-4 py-2 bg-yellow-100/50 text-yellow-700 rounded-xl border border-yellow-200 border-dashed hover:bg-yellow-100 transition-colors text-sm font-medium"
-                >
-                    {seeding ? (
-                        <>جاري التوليد...</>
-                    ) : (
-                        <>
-                            <Zap className="w-4 h-4" />
-                            توليد بيانات تجريبية (للاختبار)
-                        </>
-                    )}
-                </button>
-            </div>
+
 
             {/* 1. Stats Row */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
