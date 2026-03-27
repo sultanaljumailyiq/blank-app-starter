@@ -28,8 +28,9 @@ interface SupplierDetailModalProps {
     onClose: () => void;
     onApprove?: (supplier: Supplier) => void;
     onReject?: (supplier: Supplier) => void;
-    onClearCommission?: (supplierId: string) => void;
+    onClearCommission?: (supplierId: string, amount: number) => Promise<boolean>;
     onUpdateStatus?: (id: string, status: 'approved' | 'suspended' | 'rejected') => void;
+    onUpdateCommission?: (supplierId: string, rate: number) => Promise<boolean>;
 }
 
 export const SupplierDetailModal: React.FC<SupplierDetailModalProps> = ({
@@ -39,9 +40,17 @@ export const SupplierDetailModal: React.FC<SupplierDetailModalProps> = ({
     onApprove,
     onReject,
     onClearCommission,
-    onUpdateStatus
+    onUpdateStatus,
+    onUpdateCommission
 }) => {
     const [activeTab, setActiveTab] = useState<'profile' | 'finance' | 'products' | 'orders' | 'settlements'>('profile');
+    const [editRate, setEditRate] = useState<number>(supplier?.commissionPercentage || 0);
+
+    useEffect(() => {
+        if (supplier?.commissionPercentage !== undefined) {
+            setEditRate(supplier.commissionPercentage);
+        }
+    }, [supplier]);
 
 
 
@@ -51,41 +60,52 @@ export const SupplierDetailModal: React.FC<SupplierDetailModalProps> = ({
         totalCommission: 0,
         netProfit: 0,
         pendingCommission: 0,
+        totalSettlements: 0,
         ordersCount: 0
     });
 
+    const fetchRealStats = async () => {
+        if (!supplier?.id) return;
+        
+        // Fetch ALL delivered orders for this supplier
+        const { data: orders } = await supabase
+            .from('store_orders')
+            .select('total_amount, status, created_at, is_settled')
+            .or(`supplier_id.eq.${supplier.id}${supplier.user_id ? `,supplier_id.eq.${supplier.user_id}` : ''}`)
+            .eq('status', 'delivered');
+
+        // Fetch Settlements to calculate Total Settlements
+        const { data: settlements } = await supabase
+            .from('financial_transactions')
+            .select('amount')
+            .eq('supplier_id', supplier.id)
+            .eq('category', 'commission_clearance');
+
+        const allOrders = orders || [];
+        const totalSales = allOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0) || 0;
+        
+        const unsettledOrders = allOrders.filter(o => !o.is_settled);
+        const unsettledSales = unsettledOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0) || 0;
+
+        const commissionRate = supplier.commissionPercentage || 0;
+        const totalCommissionForAll = (totalSales * commissionRate) / 100;
+        const dueCommission = (unsettledSales * commissionRate) / 100;
+        
+        const netProfit = totalSales - totalCommissionForAll;
+        const totalSettlements = settlements?.reduce((sum, s) => sum + (s.amount || 0), 0) || 0;
+
+        setRealStats({
+            totalSales: totalSales,
+            totalCommission: dueCommission, // Due Commission for current payout
+            netProfit: netProfit,
+            pendingCommission: dueCommission,
+            totalSettlements: totalSettlements,
+            ordersCount: allOrders.length
+        });
+    };
+
     useEffect(() => {
         if (isOpen && supplier?.id) {
-            const fetchRealStats = async () => {
-                // Fetch ALL delivered orders for this supplier to calculate Total Sales
-                const { data: orders } = await supabase
-                    .from('store_orders')
-                    .select('total_amount, status, created_at')
-                    .eq('supplier_id', supplier.id)
-                    .eq('status', 'delivered');
-
-                // Fetch Pending Orders for potential commission (optional, usually commission is on delivered)
-
-                const totalSales = orders?.reduce((sum, o) => sum + (o.total_amount || 0), 0) || 0;
-                const commissionRate = supplier.commissionPercentage || 0;
-                const totalCommission = (totalSales * commissionRate) / 100;
-                const netProfit = totalSales - totalCommission;
-
-                // Pending Commission (can be calculated from non-settled orders or just use the current month/unpaid flag logic)
-                // For now we use the computed totalCommission vs what has been paid (settled).
-                // But simpler: just use the fields if we trust them, OR calculate from ORDERS since last settlement.
-                // Let's rely on the supplier.pendingCommission prop if it's updated via triggers, 
-                // BUT to be safe given the user request "Real Data synchronous with DB", we calculate it from "pending_commission" column in DB directly to be fresh.
-                const { data: freshSupplier } = await supabase.from('suppliers').select('pending_commission, total_sales').eq('id', supplier.id).single();
-
-                setRealStats({
-                    totalSales: freshSupplier?.total_sales || totalSales, // Prefer DB aggregate if maintained, else calc
-                    totalCommission: totalCommission,
-                    netProfit: netProfit,
-                    pendingCommission: freshSupplier?.pending_commission || 0,
-                    ordersCount: orders?.length || 0
-                });
-            };
             fetchRealStats();
         }
     }, [isOpen, supplier]);
@@ -250,12 +270,38 @@ export const SupplierDetailModal: React.FC<SupplierDetailModalProps> = ({
                                     <h3 className="text-xl font-bold text-blue-700">{formatCurrency(netProfit)}</h3>
                                 </div>
                                 <div className="bg-purple-50 p-4 rounded-xl border border-purple-100">
-                                    <p className="text-sm text-purple-600 mb-1">إجمالي عمولة المنصة</p>
-                                    <h3 className="text-xl font-bold text-purple-700">{formatCurrency(commissionAmount)}</h3>
+                                    <p className="text-sm text-purple-600 mb-1">إجمالي التسويات</p>
+                                    <h3 className="text-xl font-bold text-purple-700">{formatCurrency(realStats.totalSettlements)}</h3>
                                 </div>
                                 <div className="bg-orange-50 p-4 rounded-xl border border-orange-100">
-                                    <p className="text-sm text-orange-600 mb-1">عمولة المنصة (المعلقة)</p>
-                                    <h3 className="text-xl font-bold text-orange-700">{formatCurrency(realStats.pendingCommission)}</h3>
+                                    <p className="text-sm text-orange-600 mb-1">العمولة المستحقة</p>
+                                    <h3 className="text-xl font-bold text-orange-700">{formatCurrency(commissionAmount)}</h3>
+                                </div>
+                            </div>
+
+                            <div className="bg-white border rounded-xl p-6">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h4 className="font-bold text-gray-900">نسبة عمولة المنصة</h4>
+                                        <p className="text-sm text-gray-500">تعديل النسبة المئوية المخصومة من مبيعات هذا المورد</p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <input 
+                                            type="number" 
+                                            className="w-20 p-2 border rounded-lg text-center font-bold"
+                                            value={editRate}
+                                            onChange={(e) => setEditRate(Number(e.target.value))}
+                                            min="0"
+                                            max="100"
+                                        />
+                                        <span className="font-bold text-gray-600">%</span>
+                                        <Button size="sm" onClick={async () => {
+                                            const success = await onUpdateCommission?.(supplier.id, editRate);
+                                            if (success) fetchRealStats();
+                                        }}>
+                                            حفظ
+                                        </Button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -265,7 +311,10 @@ export const SupplierDetailModal: React.FC<SupplierDetailModalProps> = ({
                                         <h4 className="font-bold text-gray-900">تصفية الحسابات</h4>
                                         <p className="text-sm text-gray-500">تصفية المستحقات المالية حتى تاريخ اليوم</p>
                                     </div>
-                                    <Button onClick={() => onClearCommission(supplier.id)}>
+                                    <Button onClick={async () => {
+                                        const success = await onClearCommission?.(supplier.id, commissionAmount);
+                                        if (success) fetchRealStats();
+                                    }}>
                                         تصفية العمولة الآن
                                     </Button>
                                 </div>
@@ -286,12 +335,12 @@ export const SupplierDetailModal: React.FC<SupplierDetailModalProps> = ({
 
                     {activeTab === 'orders' && (
                         <div className="min-h-[400px]">
-                            <StoreOrdersSection supplierId={supplier.id} />
+                            <StoreOrdersSection supplierId={`${supplier.id}${supplier.user_id ? `,${supplier.user_id}` : ''}`} />
                         </div>
                     )}
 
                     {activeTab === 'settlements' && (
-                        <SettlementsTab supplierId={supplier.id} />
+                        <SettlementsTab supplierId={supplier.id} onRefreshStats={fetchRealStats} />
                     )}
                 </div>
             </div>
@@ -299,24 +348,57 @@ export const SupplierDetailModal: React.FC<SupplierDetailModalProps> = ({
     );
 };
 
-const SettlementsTab = ({ supplierId }: { supplierId: string }) => {
+const SettlementsTab = ({ supplierId, onRefreshStats }: { supplierId: string, onRefreshStats?: () => void }) => {
     const [settlements, setSettlements] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        const fetchSettlements = async () => {
-            const { data } = await supabase
-                .from('financial_transactions')
-                .select('*')
-                .eq('supplier_id', supplierId)
-                .eq('category', 'commission_clearance')
-                .order('transaction_date', { ascending: false });
+    const fetchSettlements = async () => {
+        setLoading(true);
+        const { data } = await supabase
+            .from('financial_transactions')
+            .select('*')
+            .eq('supplier_id', supplierId)
+            .eq('category', 'commission_clearance')
+            .order('transaction_date', { ascending: false });
 
-            if (data) setSettlements(data);
-            setLoading(false);
-        };
+        if (data) setSettlements(data);
+        setLoading(false);
+    };
+
+    useEffect(() => {
         fetchSettlements();
     }, [supplierId]);
+
+    const handleReverseSettlement = async (txId: string) => {
+        if (!window.confirm('هل أنت متأكد من رغبتك في حذف هذه التسوية وإعادة فتح الطلبات المرتبطة بها؟')) return;
+        
+        try {
+            // 1. Unsettle linked orders
+            const { error: updError } = await supabase
+                .from('store_orders')
+                .update({ is_settled: false, settlement_id: null })
+                .eq('settlement_id', txId);
+
+            if (updError) throw updError;
+
+            // 2. Delete the transaction
+            const { error: delError } = await supabase
+                .from('financial_transactions')
+                .delete()
+                .eq('id', txId);
+
+            if (delError) throw delError;
+
+            // 3. Refresh statistics
+            setSettlements(prev => prev.filter(s => s.id !== txId));
+            onRefreshStats?.();
+            const { toast } = await import('sonner');
+            toast.success('تم حذف التسوية وإرجاع الطلبيات بنجاح');
+        } catch (err: any) {
+            const { toast } = await import('sonner');
+            toast.error('فشل حذف التسوية: ' + err.message);
+        }
+    };
 
     if (loading) return <div className="p-4 text-center">جاري التحميل...</div>;
 
@@ -339,6 +421,7 @@ const SettlementsTab = ({ supplierId }: { supplierId: string }) => {
                             <th className="p-3">التاريخ</th>
                             <th className="p-3">المبلغ</th>
                             <th className="p-3">الوصف</th>
+                            <th className="p-3 text-center">الإجراءات</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -348,6 +431,16 @@ const SettlementsTab = ({ supplierId }: { supplierId: string }) => {
                                 <td className="p-3">{new Date(tx.transaction_date).toLocaleDateString('ar-IQ')}</td>
                                 <td className="p-3 font-bold text-green-600">{formatCurrency(tx.amount)}</td>
                                 <td className="p-3 text-gray-600">{tx.description}</td>
+                                <td className="p-3 text-center">
+                                    <Button 
+                                        variant="ghost" 
+                                        size="sm" 
+                                        className="text-red-600 hover:bg-red-50"
+                                        onClick={() => handleReverseSettlement(tx.id)}
+                                    >
+                                        حذف / إرجاع
+                                    </Button>
+                                </td>
                             </tr>
                         ))}
                     </tbody>

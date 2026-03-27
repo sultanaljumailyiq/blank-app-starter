@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase';
 // Helper interface for Supplier
 export interface Supplier {
     id: string;
+    user_id?: string;
+    profile_id?: string;
     companyName: string;
     ownerName: string;
     email: string;
@@ -45,14 +47,31 @@ export function useAdminSuppliers() {
             if (error) throw error;
 
             if (data) {
+                // Fetch all delivered orders for aggregates
+                const { data: allOrders } = await supabase
+                    .from('store_orders')
+                    .select('supplier_id, total_amount, status, is_settled')
+                    .eq('status', 'delivered');
+
                 // Map data from snake_case DB to camelCase Interface
                 const mapped: Supplier[] = data.map((s: any) => {
                     const profileData = Array.isArray(s.profile) ? s.profile[0] : s.profile;
                     const isBanned = profileData?.banned === true;
                     // Derive status: suspended if banned, approved if verified, pending otherwise
                     const status: Supplier['status'] = isBanned ? 'suspended' : (s.is_verified ? 'approved' : 'pending');
+
+                    const supplierOrders = allOrders?.filter((o: any) => 
+                        o.supplier_id === s.id || (s.user_id && o.supplier_id === s.user_id)
+                    ) || [];
+                    const computedTotalSales = supplierOrders.reduce((sum: number, o: any) => sum + (o.total_amount || 0), 0);
+                    const unsettledOrders = supplierOrders.filter((o: any) => !o.is_settled);
+                    const unsettledSales = unsettledOrders.reduce((sum: number, o: any) => sum + (o.total_amount || 0), 0);
+                    const computedPendingCommission = (unsettledSales * (s.commission_percentage || 0)) / 100;
+
                     return {
                         id: s.id,
+                        user_id: s.user_id,
+                        profile_id: s.profile_id,
                         companyName: s.name || 'Unknown Company',
                         ownerName: s.contact_person || s.owner_name || profileData?.full_name || 'غير محدد',
                         email: s.email || '',
@@ -61,10 +80,10 @@ export function useAdminSuppliers() {
                         location: s.address || s.location || 'Baghdad',
                         status,
                         commissionPercentage: s.commission_percentage || 0,
-                        totalSales: s.total_sales || 0,
-                        pendingCommission: s.pending_commission || 0,
+                        totalSales: computedTotalSales,
+                        pendingCommission: computedPendingCommission,
                         rating: s.rating || 5,
-                        ordersCount: s.orders_count || 0,
+                        ordersCount: supplierOrders.length,
                         productsCount: s.products ? s.products[0]?.count : (s.supplier_products ? s.supplier_products[0]?.count : 0),
                         joinDate: s.created_at || new Date().toISOString(),
                         description: s.description,
@@ -136,21 +155,36 @@ export function useAdminSuppliers() {
         fetchSuppliers();
     }, []);
 
-    const clearCommission = async (supplierId: string) => {
+    const clearCommission = async (supplierId: string, amount: number) => {
         try {
+            if (amount <= 0) return false;
+
             const supplier = suppliers.find(s => s.id === supplierId);
-            if (!supplier || supplier.pendingCommission <= 0) return false;
 
             // 1. Record the Transaction
-            await supabase.from('financial_transactions').insert({
-                supplier_id: supplierId,
-                amount: supplier.pendingCommission,
-                type: 'expense', // Expense for platform (payout)
-                category: 'commission_clearance',
-                status: 'completed',
-                transaction_date: new Date().toISOString(),
-                description: `Commission Payout for ${supplier.companyName}`
-            });
+            const { data: newTx, error: txErr } = await supabase
+                .from('financial_transactions')
+                .insert({
+                    supplier_id: supplierId,
+                    amount: amount,
+                    type: 'expense', // Expense for platform (payout)
+                    category: 'commission_clearance',
+                    status: 'completed',
+                    transaction_date: new Date().toISOString(),
+                    description: `Commission Payout for ${supplier?.companyName || 'Supplier'}`
+                })
+                .select('id')
+                .single();
+
+            if (txErr) throw txErr;
+
+            // 1.5 Mark Orders as Settled
+            await supabase
+                .from('store_orders')
+                .update({ is_settled: true, settlement_id: newTx.id })
+                .or(`supplier_id.eq.${supplierId}${supplier?.user_id ? `,supplier_id.eq.${supplier.user_id}` : ''}`)
+                .eq('status', 'delivered')
+                .eq('is_settled', false);
 
             // 2. Clear Pending Commission
             const { error } = await supabase

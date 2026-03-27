@@ -11,9 +11,12 @@ import {
   TrendingUp,
   Clock,
   Star,
-  ShoppingCart,
   DollarSign,
-  AlertOctagon
+  AlertOctagon,
+  Settings,
+  Truck,
+  ShoppingCart,
+  Eye
 } from 'lucide-react';
 import { useAdminSuppliers, Supplier } from '../../../hooks/useAdminSuppliers';
 import { useAdminStore } from '../../../hooks/useAdminStore';
@@ -29,15 +32,57 @@ import { supabase } from '../../../lib/supabase';
 
 // --- Sub Components ---
 
-const StoreOrdersTab = () => {
+const StoreOrdersTab = ({ onOpenSupplier }: { onOpenSupplier: (supplier: Supplier) => void }) => {
+  const { suppliers, loading: suppliersLoading } = useAdminSuppliers();
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   React.useEffect(() => {
     const fetchOrders = async () => {
+      if (suppliersLoading) return;
       try {
-        const { data } = await supabase.from('store_orders').select('*');
-        setOrders(data || []);
+        setLoading(true);
+        const idList: string[] = [];
+        const fetchPromises = suppliers.map(async (s) => {
+          const ids = [s.id];
+          if (s.user_id) ids.push(s.user_id);
+
+          const { data, error } = await supabase
+            .from('store_orders')
+            .select(`
+              *,
+              items:store_order_items (
+                id,
+                product_id,
+                quantity,
+                price_at_purchase,
+                item_status,
+                return_requested,
+                return_reason,
+                product:products(name, image_url)
+              )
+            `)
+            .or(`supplier_id.eq.${s.id}${s.user_id ? `,supplier_id.eq.${s.user_id}` : ''}`)
+            .order('created_at', { ascending: false });
+
+          if (error) {
+            console.error(`Error fetching for supplier ${s.companyName}:`, error);
+            return [];
+          }
+
+          return (data || []).map((o: any) => ({
+            ...o,
+            clinic_name: o.user_name || 'زاير',
+            supplier_name: s.companyName,
+            items: o.items?.map((item: any) => ({
+              name: item.product?.name || 'منتج',
+              quantity: item.quantity
+            }))
+          }));
+        });
+
+        const results = await Promise.all(fetchPromises);
+        setOrders(results.flat().sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
       } catch (e) {
         console.error(e);
       } finally {
@@ -45,7 +90,7 @@ const StoreOrdersTab = () => {
       }
     };
     fetchOrders();
-  }, []);
+  }, [suppliers, suppliersLoading]);
 
   return (
     <div className="space-y-4">
@@ -57,13 +102,13 @@ const StoreOrdersTab = () => {
         <table className="w-full">
           <thead>
             <tr className="border-b border-gray-100">
+              <th className="p-6 text-right text-sm font-bold text-gray-600 bg-gray-50/30">المورد</th>
               <th className="p-6 text-right text-sm font-bold text-gray-600 bg-gray-50/30">رقم الطلب</th>
               <th className="p-6 text-right text-sm font-bold text-gray-600 bg-gray-50/30">العيادة</th>
-              <th className="p-6 text-right text-sm font-bold text-gray-600 bg-gray-50/30">المورد</th>
-              <th className="p-6 text-right text-sm font-bold text-gray-600 bg-gray-50/30">المواد</th>
               <th className="p-6 text-right text-sm font-bold text-gray-600 bg-gray-50/30">القيمة</th>
               <th className="p-6 text-right text-sm font-bold text-gray-600 bg-gray-50/30">الحالة</th>
               <th className="p-6 text-right text-sm font-bold text-gray-600 bg-gray-50/30">التاريخ</th>
+              <th className="p-6 text-center text-sm font-bold text-gray-600 bg-gray-50/30">الإجراءات</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
@@ -73,18 +118,9 @@ const StoreOrdersTab = () => {
               <tr><td colSpan={7} className="text-center p-8 text-gray-500">لا توجد طلبات المنتجات</td></tr>
             ) : orders.map(order => (
               <tr key={order.id} className="hover:bg-blue-50/30 transition-colors">
-                <td className="p-6 font-mono text-xs text-gray-500">{order.id}</td>
-                <td className="p-6 font-medium text-gray-900">{order.clinic_name}</td>
                 <td className="p-6 text-sm text-gray-600">{order.supplier_name}</td>
-                <td className="p-6 text-sm">
-                  <div className="flex flex-col gap-1">
-                    {order.items && order.items.map((item: any, idx: number) => (
-                      <span key={idx} className="text-xs bg-gray-100 px-2 py-1 rounded inline-block w-fit">
-                        {item.name} (x{item.quantity})
-                      </span>
-                    ))}
-                  </div>
-                </td>
+                <td className="p-6 font-mono text-xs text-gray-500">{order.order_number || order.id.split('-')[0]}</td>
+                <td className="p-6 font-medium text-gray-900">{order.clinic_name}</td>
                 <td className="p-6 font-bold text-gray-900">{order.total_amount?.toLocaleString()} د.ع</td>
                 <td className="p-6">
                   <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${order.status === 'delivered' ? 'bg-green-100 text-green-700' :
@@ -95,7 +131,18 @@ const StoreOrdersTab = () => {
                   </span>
                 </td>
                 <td className="p-6 text-sm text-gray-400">
-                  {new Date(order.order_date).toLocaleDateString('ar-IQ')}
+                  {new Date(order.created_at).toLocaleDateString('ar-IQ')}
+                </td>
+                <td className="p-6 text-center">
+                  <button 
+                    onClick={() => {
+                      const orig = suppliers?.find(s => s.id === order.supplier_id);
+                      if (orig) onOpenSupplier(orig);
+                    }}
+                    className="text-blue-600 hover:text-blue-800 transition-colors"
+                  >
+                    <Eye className="w-4 h-4" />
+                  </button>
                 </td>
               </tr>
             ))}
@@ -141,6 +188,78 @@ const DealsTabContent = () => {
         {activeSubTab === 'deals' && <DealsManager />}
         {activeSubTab === 'requests' && <DealRequestsTable />}
         {activeSubTab === 'coupons' && <CouponsManager />}
+      </div>
+    </div>
+  );
+};
+
+const StoreSettingsTab = () => {
+  const [allowMultiSupplier, setAllowMultiSupplier] = useState(
+    localStorage.getItem('allow_multi_supplier') === 'true'
+  );
+
+  const toggleMultiSupplier = () => {
+    const newState = !allowMultiSupplier;
+    setAllowMultiSupplier(newState);
+    localStorage.setItem('allow_multi_supplier', String(newState));
+    toast.success(newState ? 'تم تفعيل الطلب من موردين مختلفين' : 'تم تعطيل الطلب من موردين مختلفين');
+  };
+
+  return (
+    <div className="space-y-6 max-w-5xl mx-auto">
+      <div className="bg-white rounded-[2rem] p-8 border border-gray-100 shadow-sm space-y-8">
+        <div>
+          <h3 className="text-xl font-bold text-gray-900 mb-2">إعدادات الشراء وسلة التسوق</h3>
+          <p className="text-gray-500 mb-6">التحكم بخيارات وإمكانيات العملاء في متجر المنصة</p>
+          
+          <div className="flex items-center justify-between p-6 bg-slate-50 rounded-2xl border border-slate-100">
+            <div>
+              <h4 className="font-bold text-slate-900">تفعيل طلب منتجات من موردين مختلفين</h4>
+              <p className="text-sm text-slate-500 mt-1 max-w-2xl leading-relaxed">يسمح للعيادات بإضافة منتجات من عدة موردين في سلة واحدة وإتمامها كطلب واحد، حيث سيقوم النظام بفصلها تلقائياً إلى طلبات فرعية لكل مورد.</p>
+            </div>
+            <button
+              onClick={toggleMultiSupplier}
+              className={`relative inline-flex h-7 w-14 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 ${allowMultiSupplier ? 'bg-blue-600' : 'bg-gray-200'}`}
+              role="switch"
+              dir="ltr"
+              aria-checked={allowMultiSupplier}
+            >
+              <span className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${allowMultiSupplier ? 'translate-x-7' : 'translate-x-0'}`} />
+            </button>
+          </div>
+        </div>
+
+        <div className="pt-8 border-t border-gray-100">
+          <div className="flex items-center gap-2 mb-2">
+            <h3 className="text-xl font-bold text-gray-900">إدارة توصيل الطلبات</h3>
+            <span className="px-2.5 py-1 bg-purple-100 text-purple-700 text-xs font-bold rounded-full">تحت التطوير</span>
+          </div>
+          <p className="text-gray-500 mb-6">التحكم في الجهة المسؤولة عن تسليم الطلبات للعيادات</p>
+          
+          <div className="p-6 bg-purple-50/50 rounded-2xl border border-purple-100 cursor-not-allowed">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-slate-900 flex items-center gap-2">
+                  <Truck className="w-5 h-5 text-purple-600" />
+                  اعتماد المنصة كمسؤول عن توصيل المنتجات
+                </h4>
+                <p className="text-sm text-slate-500 mt-2 leading-relaxed max-w-2xl opacity-80">
+                  في حال تفعيل هذا الخيار، سيتم إلغاء مسؤولية المورد عن توصيل المنتجات، وستقوم إدارة المنصة أو شركة توصيل معتمدة من قبلها باستلام المنتجات من المخازن وتوصيلها للعيادات المعنية. 
+                  سيتم إضافة نظام مناديب متكامل لتتبع حركة الاستلام والتسليم قريباً.
+                </p>
+              </div>
+              <button
+                disabled
+                className="relative inline-flex h-7 w-14 flex-shrink-0 cursor-not-allowed rounded-full border-2 border-transparent bg-gray-200 transition-colors duration-200 ease-in-out opacity-50"
+                role="switch"
+                dir="ltr"
+                aria-checked="false"
+              >
+                <span className="pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out translate-x-0" />
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -277,15 +396,9 @@ export const StoreSuppliersSection: React.FC = () => {
       )
     },
     {
-      key: 'rating',
-      title: 'التقييم',
-      sortable: true,
-      render: (value) => (
-        <div className="flex items-center gap-1">
-          <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-          <span className="font-semibold">{value}</span>
-        </div>
-      )
+      key: 'ordersCount',
+      title: 'عدد الطلبات',
+      sortable: true
     },
     {
       key: 'totalSales',
@@ -298,9 +411,14 @@ export const StoreSuppliersSection: React.FC = () => {
       )
     },
     {
-      key: 'ordersCount',
-      title: 'عدد الطلبات',
-      sortable: true
+      key: 'pendingCommission',
+      title: 'العمولة المستحقة',
+      sortable: true,
+      render: (value) => (
+        <span className="font-semibold text-orange-600">
+          {value.toLocaleString()} د.ع
+        </span>
+      )
     },
     {
       key: 'actions',
@@ -354,9 +472,9 @@ export const StoreSuppliersSection: React.FC = () => {
     },
     {
       key: 'pendingCommission',
-      title: 'عمولة المنصة',
-      render: (_, record) => <span className="font-bold text-green-600">
-        {((record.totalSales * record.commissionPercentage) / 100).toLocaleString()} د.ع
+      title: 'العمولة المستحقة',
+      render: (v) => <span className="font-bold text-green-600">
+        {Number(v).toLocaleString()} د.ع
       </span>
     },
     {
@@ -501,13 +619,14 @@ export const StoreSuppliersSection: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="bg-white p-1 rounded-2xl border border-gray-200 inline-flex">
+      <div className="bg-white p-1 rounded-2xl border border-gray-200 flex flex-wrap gap-1">
         {[
           { id: 'orders', label: 'طلبات المنتجات', icon: Package },
           { id: 'performance', label: 'الموردين', icon: Users },
           { id: 'brands', label: 'العلامات التجارية', icon: Star },
           { id: 'financial', label: 'العمولات والمالية', icon: DollarSign },
-          { id: 'campaigns', label: 'العروض والصفقات', icon: Store }
+          { id: 'campaigns', label: 'العروض والصفقات', icon: Store },
+          { id: 'settings', label: 'إعدادات المتجر', icon: Settings }
         ].map((tab) => {
           const Icon = tab.icon;
           return (
@@ -515,7 +634,7 @@ export const StoreSuppliersSection: React.FC = () => {
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`
-                flex items-center gap-2 py-2.5 px-6 rounded-xl font-medium text-sm transition-all duration-200
+                flex items-center gap-2 py-2.5 px-6 rounded-xl font-medium text-sm transition-all duration-200 whitespace-nowrap
                 ${activeTab === tab.id
                   ? 'bg-purple-600 text-white shadow-md shadow-purple-200'
                   : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
@@ -531,7 +650,7 @@ export const StoreSuppliersSection: React.FC = () => {
 
       {/* Content */}
       {activeTab === 'orders' && (
-        <StoreOrdersTab />
+        <StoreOrdersTab onOpenSupplier={setSelectedSupplier} />
       )}
 
       {activeTab === 'brands' && (
@@ -576,9 +695,6 @@ export const StoreSuppliersSection: React.FC = () => {
             <AdminTable
               columns={performanceColumns}
               data={filteredSuppliers}
-              actions={{
-                view: setSelectedSupplier
-              }}
             />
           </div>
         </div>
@@ -605,6 +721,10 @@ export const StoreSuppliersSection: React.FC = () => {
         <DealsTabContent />
       )}
 
+      {activeTab === 'settings' && (
+        <StoreSettingsTab />
+      )}
+
       {/* Supplier Modal */}
       <SupplierDetailModal
         supplier={selectedSupplier}
@@ -618,11 +738,27 @@ export const StoreSuppliersSection: React.FC = () => {
           if (status === 'approved') toast.success('تم تفعيل حساب المورد');
           setSelectedSupplier(null);
         }}
-        onClearCommission={async () => {
+        onClearCommission={async (id, amount) => {
           if (selectedSupplier) {
-            const success = await clearCommission(selectedSupplier.id);
-            if (success) toast.success('تم تصفية العمولة بنجاح');
-            else toast.error('فشل تصفية العمولة أو لا يوجد رصيد');
+            const success = await clearCommission(selectedSupplier.id, amount);
+            if (success) {
+              toast.success('تم تصفية العمولة بنجاح');
+              return true;
+            } else {
+              toast.error('فشل تصفية العمولة أو لا يوجد رصيد');
+              return false;
+            }
+          }
+          return false;
+        }}
+        onUpdateCommission={async (id, rate) => {
+          try {
+            await updateCommissionRate(id, rate);
+            toast.success('تم تحديث نسبة العمولة بنجاح');
+            return true;
+          } catch (err: any) {
+            toast.error('فشل تحديث نسبة العمولة');
+            return false;
           }
         }}
       />

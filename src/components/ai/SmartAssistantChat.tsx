@@ -1,9 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Sparkles, Paperclip, X, FileText, Image as ImageIcon, FileSpreadsheet, Save } from 'lucide-react';
 import { Button } from '../common/Button';
-
-const AI_AGENT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-agent`;
-const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+import { aiService } from '../../services/ai/AIService';
 
 interface SmartAssistantChatProps {
     patientId?: string;
@@ -57,32 +55,6 @@ export const SmartAssistantChat: React.FC<SmartAssistantChatProps> = ({ patientI
         e.target.value = '';
     };
 
-    const callAIAgent = async (message: string, context?: any): Promise<string> => {
-        const response = await fetch(AI_AGENT_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${ANON_KEY}`,
-                'apikey': ANON_KEY,
-            },
-            body: JSON.stringify({
-                agent_type: 'doctor_assistant',
-                message,
-                context,
-            })
-        });
-
-        if (!response.ok) {
-            const err = await response.json();
-            if (response.status === 429) return 'تم تجاوز الحد المسموح. يرجى المحاولة لاحقاً.';
-            if (response.status === 402) return 'رصيد الذكاء الاصطناعي غير كافٍ.';
-            throw new Error(err.error || 'خطأ في الخادم');
-        }
-
-        const data = await response.json();
-        return data.response || 'لا يوجد رد.';
-    };
-
     const handleInjectContext = async () => {
         if (!patientName) return;
 
@@ -97,8 +69,10 @@ export const SmartAssistantChat: React.FC<SmartAssistantChatProps> = ({ patientI
         setIsTyping(true);
 
         try {
-            const responseText = await callAIAgent(
-                'قم بتحليل سجل المريض وأعطني ملخصاً للحالة.',
+            // Using aiService for Doctor Assistant
+            const responseText = await aiService.chat(
+                'doctor_assistant',
+                'Analyze Patient Record',
                 { patientId, patientName, action: 'analyze_record' }
             );
 
@@ -111,6 +85,7 @@ export const SmartAssistantChat: React.FC<SmartAssistantChatProps> = ({ patientI
             setMessages(prev => [...prev, botMsg]);
         } catch (error) {
             console.error(error);
+            // Fallback error message (optional)
             setMessages(prev => [...prev, {
                 id: Date.now().toString(),
                 sender: 'bot',
@@ -144,18 +119,23 @@ export const SmartAssistantChat: React.FC<SmartAssistantChatProps> = ({ patientI
         setIsTyping(true);
 
         try {
+            // Construct Context
             const context = {
                 patientId,
                 patientName,
                 attachment: newMessage.attachment
             };
 
-            const responseText = await callAIAgent(newMessage.text, context);
+            const responseText = await aiService.chat(
+                'doctor_assistant',
+                newMessage.text,
+                context
+            );
 
             const botMsg: Message = {
                 id: (Date.now() + 1).toString(),
                 sender: 'bot',
-                text: responseText,
+                text: responseText, // The service handles the "intelligence" now
                 timestamp: new Date()
             };
             setMessages(prev => [...prev, botMsg]);
@@ -193,8 +173,10 @@ export const SmartAssistantChat: React.FC<SmartAssistantChatProps> = ({ patientI
                     {/* Status Indicator */}
                     <div className="h-4 w-px bg-gray-200 mx-1"></div>
                     <div className="flex items-center gap-1.5 bg-gray-50 px-2 py-0.5 rounded-full border border-gray-100">
-                        <div className="w-2 h-2 rounded-full animate-pulse bg-green-500"></div>
-                        <span className="text-[10px] font-medium text-gray-500">Lovable AI</span>
+                        <div className={`w-2 h-2 rounded-full animate-pulse ${aiService.getConfig('doctor_assistant').provider === 'mock' || !aiService.getConfig('doctor_assistant').apiKey ? 'bg-orange-500' : 'bg-green-500'}`}></div>
+                        <span className="text-[10px] font-medium text-gray-500">
+                            {aiService.getConfig('doctor_assistant').provider === 'mock' || !aiService.getConfig('doctor_assistant').apiKey ? 'Demo Mode' : 'Online'}
+                        </span>
                     </div>
                 </div>
 

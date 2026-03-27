@@ -10,6 +10,7 @@ interface TimeSlotSelectorProps {
   onSelectTime: (time: string) => void;
   selectedTime?: string;
   excludeAppointmentId?: string; // لاستبعاد موعد معين عند التعديل
+  clinicWorkingHours?: string; // ساعات عمل العيادة
 }
 
 export const TimeSlotSelector: React.FC<TimeSlotSelectorProps> = ({
@@ -18,16 +19,17 @@ export const TimeSlotSelector: React.FC<TimeSlotSelectorProps> = ({
   duration,
   onSelectTime,
   selectedTime,
-  excludeAppointmentId
+  excludeAppointmentId,
+  clinicWorkingHours
 }) => {
   // Determine initial view based on selectedTime or current time
   const initialView = useMemo(() => {
     if (selectedTime) {
       const hour = parseInt(selectedTime.split(':')[0]);
-      return hour >= 14 ? 'evening' : 'morning';
+      return hour >= 12 ? 'evening' : 'morning';
     }
     const currentHour = new Date().getHours();
-    return currentHour >= 14 ? 'evening' : 'morning';
+    return currentHour >= 12 ? 'evening' : 'morning';
   }, [selectedTime]);
 
   const [currentView, setCurrentView] = useState<'morning' | 'evening'>(initialView);
@@ -36,30 +38,39 @@ export const TimeSlotSelector: React.FC<TimeSlotSelectorProps> = ({
   React.useEffect(() => {
     if (selectedTime) {
       const hour = parseInt(selectedTime.split(':')[0]);
-      const view = hour >= 14 ? 'evening' : 'morning';
+      const view = hour >= 12 ? 'evening' : 'morning';
       setCurrentView(view);
     }
   }, [selectedTime]);
 
-  // إنشاء شقوق الوقت للتاريخ المحدد
-  const timeSlots = useMemo(() => {
-    if (!selectedDate) return [];
-
+  // الحصول على جدول عمل الطبيب أو الجدول الافتراضي
+  const schedule = useMemo(() => {
     const date = new Date(selectedDate);
     const dayName = date.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
 
-    // الحصول على جدول عمل الطبيب أو الجدول الافتراضي
-    const schedule = selectedDoctor?.schedule?.[dayName] || {
+    let start = defaultWorkingHours.start;
+    let end = defaultWorkingHours.end;
+
+    if (clinicWorkingHours && clinicWorkingHours.includes(' - ')) {
+      const [startClinic, endClinic] = clinicWorkingHours.split(' - ');
+      if (startClinic && endClinic) {
+        start = startClinic.trim();
+        end = endClinic.trim();
+      }
+    }
+
+    return selectedDoctor?.schedule?.[dayName] || {
       isWorking: true,
-      startTime: defaultWorkingHours.start,
-      endTime: defaultWorkingHours.end,
+      startTime: start,
+      endTime: end,
       breakStart: defaultWorkingHours.breakStart,
       breakEnd: defaultWorkingHours.breakEnd
     };
+  }, [selectedDate, selectedDoctor, clinicWorkingHours]);
 
-    if (!schedule.isWorking) {
-      return [];
-    }
+  // إنشاء شقوق الوقت للتاريخ المحدد
+  const timeSlots = useMemo(() => {
+    if (!schedule.isWorking) return [];
 
     // الحصول على المواعيد الموجودة في هذا التاريخ
     const existingAppointments = mockAppointments.filter(apt =>
@@ -77,7 +88,7 @@ export const TimeSlotSelector: React.FC<TimeSlotSelectorProps> = ({
     const breakEnd = schedule.breakEnd ? parseTime(schedule.breakEnd) : null;
 
     // إنشاء شقوق كل 30 دقيقة
-    for (let time = startTime; time < endTime; time += slotDuration) {
+    for (let time = startTime; time <= endTime; time += slotDuration) {
       const timeString = formatTime(time);
 
       // تخطي أوقات الاستراحة
@@ -96,8 +107,8 @@ export const TimeSlotSelector: React.FC<TimeSlotSelectorProps> = ({
         return (time < aptEnd && slotEnd > aptStart);
       });
 
-      // تحقق إذا كان الوقت + المدة لا يتجاوز نهاية العمل
-      const isAvailable = !isBooked && (time + duration) <= endTime;
+      // تحقق إذا كان الوقت + المدة لا يتجاوز نهاية العمل (أو يبدأ عند نهاية العمل بالضبط)
+      const isAvailable = !isBooked && (time === endTime || (time + duration) <= endTime);
 
       // إذا كان هناك استراحة، تأكد من أن الموعد لا يتداخل معها
       if (breakStart && breakEnd && isAvailable) {
@@ -115,16 +126,16 @@ export const TimeSlotSelector: React.FC<TimeSlotSelectorProps> = ({
     }
 
     return slots;
-  }, [selectedDate, selectedDoctor, duration, excludeAppointmentId]);
+  }, [selectedDate, selectedDoctor, duration, excludeAppointmentId, clinicWorkingHours]);
 
   // تصفية الأوقات حسب العرض الحالي
   const filteredSlots = useMemo(() => {
     return timeSlots.filter(slot => {
       const hour = parseInt(slot.time.split(':')[0]);
       if (currentView === 'morning') {
-        return hour < 14; // قبل 2 ظهراً
+        return hour < 12; // قبل 12 ظهراً
       } else {
-        return hour >= 14; // بعد 2 ظهراً
+        return hour >= 12; // بعد 12 ظهراً
       }
     });
   }, [timeSlots, currentView]);
@@ -182,27 +193,6 @@ export const TimeSlotSelector: React.FC<TimeSlotSelectorProps> = ({
 
   return (
     <div className="space-y-4" dir="rtl">
-      {/* معلومات جدول العمل */}
-      {selectedDoctor && (
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm flex justify-between items-center">
-          <div className="flex items-center gap-2 text-gray-700">
-            <Calendar className="w-4 h-4 text-purple-600" />
-            <span className="font-semibold">ساعات العمل:</span>
-            <span>
-              {timeSlots.length > 0
-                ? `${formatTime12h(formatTime(parseTime(selectedDoctor.schedule?.[new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase()]?.startTime || defaultWorkingHours.start)))} - ${formatTime12h(formatTime(parseTime(selectedDoctor.schedule?.[new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase()]?.endTime || defaultWorkingHours.end)))}`
-                : 'غير متاح'}
-            </span>
-          </div>
-          {duration && (
-            <div className="flex items-center gap-1 text-blue-600 bg-blue-50 px-2 py-1 rounded">
-              <Clock className="w-3 h-3" />
-              <span>{duration} دقيقة</span>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* تبويبات الوقت */}
       <div className="flex border-b border-gray-200 bg-gray-50 rounded-t-lg">
         <button
@@ -214,7 +204,9 @@ export const TimeSlotSelector: React.FC<TimeSlotSelectorProps> = ({
         >
           <span className="flex flex-col items-center gap-1">
             <span className="text-sm">الفترة الصباحية</span>
-            <span className="text-[10px] opacity-70 bg-gray-200/50 px-2 py-0.5 rounded-full">08:00 ص - 02:00 م</span>
+            <span className="text-[10px] opacity-70 bg-gray-200/50 px-2 py-0.5 rounded-full">
+              {formatTime12h(schedule.startTime)} - 12:00 م
+            </span>
           </span>
         </button>
         <button
@@ -226,7 +218,9 @@ export const TimeSlotSelector: React.FC<TimeSlotSelectorProps> = ({
         >
           <span className="flex flex-col items-center gap-1">
             <span className="text-sm">الفترة المسائية</span>
-            <span className="text-[10px] opacity-70 bg-gray-200/50 px-2 py-0.5 rounded-full">02:00 م - 09:00 م</span>
+            <span className="text-[10px] opacity-70 bg-gray-200/50 px-2 py-0.5 rounded-full">
+              12:00 م - {formatTime12h(schedule.endTime)}
+            </span>
           </span>
         </button>
       </div>

@@ -9,6 +9,10 @@ export interface BuyerOrder {
     total: number;
     status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'returned';
     trackingNumber?: string;
+    createdAt?: string;
+    supplierName?: string;
+    supplierId?: string;
+    creatorName?: string;
 }
 
 export const useStoreOrders = () => {
@@ -29,6 +33,7 @@ export const useStoreOrders = () => {
                 .from('store_orders')
                 .select(`
                     *,
+                    supplier:suppliers(name),
                     items:store_order_items(
                         product:products(name)
                     )
@@ -45,7 +50,11 @@ export const useStoreOrders = () => {
                 items: order.items?.map((i: any) => i.product?.name || 'منتج') || [],
                 total: order.total_amount,
                 status: order.status,
-                trackingNumber: order.tracking_number
+                trackingNumber: order.tracking_number,
+                createdAt: order.created_at,
+                supplierName: order.supplier?.name || order.items?.[0]?.supplier?.name,
+                supplierId: order.supplier_id || order.items?.[0]?.supplier_id,
+                creatorName: order.ordered_by || order.user_name?.split(' - ')[0]
             }));
 
             setOrders(mappedOrders);

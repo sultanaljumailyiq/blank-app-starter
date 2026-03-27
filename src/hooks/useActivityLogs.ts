@@ -24,7 +24,7 @@ export const useActivityLogs = (clinicId?: string) => {
         try {
             const { data, error } = await supabase
                 .from('activity_logs')
-                .select('*, user:user_id(email)')
+                .select('*')
                 .eq('clinic_id', clinicId)
                 .order('created_at', { ascending: false })
                 .limit(100);

@@ -43,6 +43,7 @@ export const StaffSelector: React.FC<StaffSelectorProps> = ({
           phone: s.phone,
           email: s.email,
           isActive: s.status === 'active',
+          avatar: s.avatar,
           // Map schedule if available
           schedule: s.workSchedule ? {
             sunday: { isWorking: isWorkingDay('Sunday') || isWorkingDay('الأحد'), startTime: s.workSchedule.startTime || '09:00', endTime: s.workSchedule.endTime || '17:00' },
@@ -179,9 +180,13 @@ export const StaffSelector: React.FC<StaffSelectorProps> = ({
               {/* معلومات الطبيب */}
               <div className="flex items-start gap-4">
                 {/* الصورة الرمزية */}
-                <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-                  {doctor.name.split(' ')[1]?.charAt(0) || doctor.name.charAt(0)}
-                </div>
+                {doctor.avatar ? (
+                  <img src={doctor.avatar} alt={doctor.name} className="w-12 h-12 rounded-full object-cover flex-shrink-0 border-2 border-white shadow-sm" />
+                ) : (
+                  <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+                    {doctor.name.split(' ')[1]?.charAt(0) || doctor.name.charAt(0)}
+                  </div>
+                )}
 
                 {/* التفاصيل */}
                 <div className="flex-1">

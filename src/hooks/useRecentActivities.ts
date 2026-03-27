@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useClinics } from './useClinics';
 import {
     Calendar,
     UserPlus,
@@ -21,10 +22,12 @@ export interface ActivityItem {
     clinicId?: string;
     clinicName?: string; // Optional if we can map it
     timestamp: number; // For sorting
+    performedBy?: string;
 }
 
 export const useRecentActivities = (clinicId?: string, limit = 10) => {
     const { user } = useAuth();
+    const { clinics } = useClinics();
     const [activities, setActivities] = useState<ActivityItem[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -32,36 +35,50 @@ export const useRecentActivities = (clinicId?: string, limit = 10) => {
         if (user) {
             fetchActivities();
         }
-    }, [user, clinicId]);
+    }, [user, clinicId, clinics]);
 
     const fetchActivities = async () => {
         setLoading(true);
         const allActivities: ActivityItem[] = [];
 
         try {
-            // 1. New Appointments (Last 7 days)
-            let aptQuery = supabase
-                .from('appointments')
+            const clinicIds = clinics.map(c => c.id);
+            if (clinicIds.length === 0) {
+                setActivities([]);
+                setLoading(false);
+                return;
+            }
+
+            // 1. Appointment Edits/Status from Audit Logs
+            let logQuery = supabase
+                .from('activity_logs')
                 .select('*')
+                .eq('entity_type', 'appointment')
                 .order('created_at', { ascending: false })
                 .limit(limit);
 
-            if (clinicId && clinicId !== 'all') aptQuery = aptQuery.eq('clinic_id', clinicId);
+            if (clinicId && clinicId !== 'all') {
+                logQuery = logQuery.eq('clinic_id', clinicId);
+            } else {
+                logQuery = logQuery.in('clinic_id', clinicIds);
+            }
 
-            const { data: newApts } = await aptQuery;
+            const { data: appointmentLogs } = await logQuery;
 
-            if (newApts) {
-                newApts.forEach(apt => {
+            if (appointmentLogs) {
+                appointmentLogs.forEach(log => {
+                    const metadata = log.details || {};
                     allActivities.push({
-                        id: `apt-${apt.id}`,
+                        id: `log-${log.id}`,
                         type: 'appointment',
-                        title: apt.status === 'pending' ? 'طلب حجز جديد' : 'موعيد جديد',
-                        description: `تم حجز موعد للمريض ${apt.patient_name} (${apt.type})`,
-                        time: new Date(apt.created_at).toLocaleString('ar-EG'),
-                        timestamp: new Date(apt.created_at).getTime(),
+                        title: log.action_type || 'تعديل موعد',
+                        description: metadata.description || 'تم تحديث تفاصيل الموعد',
+                        time: new Date(log.created_at).toLocaleString('ar-EG'),
+                        timestamp: new Date(log.created_at).getTime(),
                         icon: Calendar,
-                        color: apt.status === 'pending' ? 'yellow' : 'blue',
-                        clinicId: apt.clinic_id?.toString()
+                        color: log.action_type?.includes('حالة') ? 'yellow' : 'blue',
+                        clinicId: log.clinic_id?.toString(),
+                        performedBy: metadata.performed_by || 'الموظف'
                     });
                 });
             }
@@ -73,7 +90,11 @@ export const useRecentActivities = (clinicId?: string, limit = 10) => {
                 .order('created_at', { ascending: false })
                 .limit(limit);
 
-            if (clinicId && clinicId !== 'all') patQuery = patQuery.eq('clinic_id', clinicId);
+            if (clinicId && clinicId !== 'all') {
+                patQuery = patQuery.eq('clinic_id', clinicId);
+            } else {
+                patQuery = patQuery.in('clinic_id', clinicIds);
+            }
 
             const { data: newPatients } = await patQuery;
 
@@ -100,7 +121,11 @@ export const useRecentActivities = (clinicId?: string, limit = 10) => {
                 .order('created_at', { ascending: false })
                 .limit(limit);
 
-            if (clinicId && clinicId !== 'all') invQuery = invQuery.eq('clinic_id', clinicId);
+            if (clinicId && clinicId !== 'all') {
+                invQuery = invQuery.eq('clinic_id', clinicId);
+            } else {
+                invQuery = invQuery.in('clinic_id', clinicIds);
+            }
 
             const { data: newInventory } = await invQuery;
 

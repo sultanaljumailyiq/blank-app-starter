@@ -269,25 +269,21 @@ export const UsersManager: React.FC = () => {
                             console.error({ supErr, profErr });
                         }
                     }}
-                    onClearCommission={async (id) => {
+                    onClearCommission={async (id, amount) => {
                         // Basic commission clearance implementation for Users Manager context
-                        // Ideally should call the same logic as StoreSuppliers, but let's keep it simple for now or strictly use the hook if possible.
-                        // Since we are not using the hook here, let's just show a toast or implement basic DB call if critical.
-                        // Given the user context, maybe just alert not supported here or implement.
-                        // Let's implement the DB transaction for consistency.
                         try {
                             const { data: supplier } = await supabase.from('suppliers').select('pending_commission').eq('id', id).single();
                             if (!supplier || !supplier.pending_commission) {
                                 toast.error('لا توجد عمولة مستحقة');
-                                return;
+                                return false;
                             }
 
-                            const amount = supplier.pending_commission;
+                            const clearanceAmount = amount || supplier.pending_commission;
 
                             const { error: txError } = await supabase.from('financial_transactions').insert({
                                 type: 'debit',
                                 category: 'commission_clearance',
-                                amount: amount,
+                                amount: clearanceAmount,
                                 description: `تسوية عمولة المنصة`,
                                 supplier_id: id,
                                 status: 'completed',
@@ -300,9 +296,11 @@ export const UsersManager: React.FC = () => {
                             if (updateError) throw updateError;
 
                             toast.success('تم تصفية العمولة بنجاح');
+                            return true;
                         } catch (e) {
                             toast.error('فشلت العملية');
                             console.error(e);
+                            return false;
                         }
                     }}
                 />

@@ -144,7 +144,7 @@ export const PatientSearch: React.FC<PatientSearchProps> = ({
 
       {/* نتائج البحث */}
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-80 overflow-y-auto">
+        <div className="mt-3 bg-white border border-gray-200 rounded-xl shadow-sm max-h-[400px] overflow-y-auto divide-y divide-gray-100">
           {results.length > 0 ? (
             <>
               {results.map((patient, index) => (
@@ -236,13 +236,7 @@ export const PatientSearch: React.FC<PatientSearchProps> = ({
         </div>
       )}
 
-      {/* خلفية شفافة لإغلاق القائمة */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setIsOpen(false)}
-        />
-      )}
+      {/* Removed backdrop overlay to allow footer clicks inline */}
     </div>
   );
 };

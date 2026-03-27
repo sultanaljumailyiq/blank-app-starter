@@ -8,6 +8,7 @@ export interface Doctor {
   email?: string;
   schedule?: WeeklySchedule;
   isActive: boolean;
+  avatar?: string;
 }
 
 export interface WeeklySchedule {

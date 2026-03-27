@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { startOfMonth, isSameMonth, subMonths, format } from 'date-fns';
+import { isSameMonth, subMonths, format } from 'date-fns';
 import { ar } from 'date-fns/locale';
+import { useSupplierOrders } from './useSupplierOrders';
 
 export interface FinanceStats {
     totalRevenue: number;
@@ -42,6 +43,12 @@ export interface Transaction {
 
 export const useSupplierFinance = () => {
     const { user } = useAuth();
+    const { orders: coreOrders, loading: ordersLoading } = useSupplierOrders();
+    
+    const [supplierId, setSupplierId] = useState<string | null>(null);
+    const [commissionRate, setCommissionRate] = useState(2.5);
+    const [dbPendingCommission, setDbPendingCommission] = useState(0);
+
     const [stats, setStats] = useState<FinanceStats>({
         totalRevenue: 0,
         monthlyRevenue: 0,
@@ -54,220 +61,253 @@ export const useSupplierFinance = () => {
         totalSettled: 0,
         pendingFees: 0
     });
+
     const [revenueData, setRevenueData] = useState<RevenueData[]>([]);
     const [expenses, setExpenses] = useState<ExpenseData[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const [settlements, setSettlements] = useState<any[]>([]);
+    const [realExpensesData, setRealExpensesData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
-    const fetchFinanceData = async () => {
-        if (!user) return;
-        try {
-            setLoading(true);
-
-            // 0. Get Supplier ID
-            let supplierId = '';
-            if (user?.email === 'supplier.demo@smartdental.com') {
-                supplierId = 'c83cf236-1175-4181-8222-d60ca2f9327d';
-            } else {
-                const { data: supplier } = await supabase.from('suppliers').select('id').eq('user_id', user.id).maybeSingle();
-                if (supplier) supplierId = supplier.id;
-            }
-
-            if (!supplierId) {
-                setLoading(false);
-                return;
-            }
-
-            // Fetch Orders
-            const { data: orders, error } = await supabase
-                .from('store_orders')
-                .select('*')
-                .eq('supplier_id', supplierId)
-                .order('created_at', { ascending: false });
-
-            if (error) throw error;
-
-            if (!orders) {
-                setLoading(false);
-                return;
-            }
-
-            // Fetch Real Expenses
-            const { data: realExpensesData } = await supabase
-                .from('supplier_expenses')
-                .select('*')
-                .eq('supplier_id', supplierId);
-
-            // Fetch Real Settlements (Commission Clearance)
-            const { data: settlements } = await supabase
-                .from('financial_transactions')
-                .select('*')
-                .eq('supplier_id', supplierId)
-                .eq('category', 'commission_clearance')
-                .order('transaction_date', { ascending: false });
-
-            // 1. Calculate Transactions
-            // A. Real Order Revenue
-            const realTransactions: Transaction[] = orders.map((order: any) => {
-                let type: Transaction['type'] = 'إيراد';
-                let amount = order.total_amount;
-                let status: Transaction['status'] = 'معلق';
-
-                if (order.status === 'delivered') {
-                    status = 'مكتمل';
-                } else if (order.status === 'cancelled') {
-                    amount = 0; // No revenue
-                    status = 'مكتمل';
-                } else if (order.status === 'returned') {
-                    type = 'مرجعات';
-                    amount = -order.total_amount;
-                    status = 'مُعاد';
+    // 1. Fetch Supplier Settings (Commission rate)
+    useEffect(() => {
+        const fetchSupplierDetails = async () => {
+            if (!user) return;
+            try {
+                if (user?.email === 'supplier.demo@smartdental.com') {
+                    setSupplierId('c83cf236-1175-4181-8222-d60ca2f9327d');
+                    return;
                 }
 
+                const { data: supplier } = await supabase
+                    .from('suppliers')
+                    .select('id, commission_percentage, pending_commission')
+                    .or(`user_id.eq.${user.id},profile_id.eq.${user.id}`)
+                    .maybeSingle();
+
+                if (supplier) {
+                    setSupplierId(supplier.id);
+                    setCommissionRate(Number(supplier.commission_percentage) || 2.5);
+                    setDbPendingCommission(Number(supplier.pending_commission) || 0);
+                } else {
+                    const { data: directMatch } = await supabase
+                        .from('suppliers')
+                        .select('id, commission_percentage, pending_commission')
+                        .eq('id', user.id)
+                        .maybeSingle();
+                    
+                    if (directMatch) {
+                        setSupplierId(directMatch.id);
+                        setCommissionRate(Number(directMatch.commission_percentage) || 2.5);
+                        setDbPendingCommission(Number(directMatch.pending_commission) || 0);
+                    } else {
+                        setSupplierId(user.id);
+                    }
+                }
+            } catch (err) {
+                console.error('Error fetching supplier details:', err);
+                setSupplierId(user.id);
+            }
+        };
+
+        fetchSupplierDetails();
+    }, [user]);
+
+    // 2. Fetch Settlements & Expenses
+    useEffect(() => {
+        const fetchFinanceTables = async () => {
+            const targetId = supplierId || user?.id;
+            if (!targetId) return;
+
+            try {
+                const { data: settlementData } = await supabase
+                    .from('financial_transactions')
+                    .select('*')
+                    .eq('supplier_id', targetId)
+                    .eq('category', 'commission_clearance')
+                    .order('transaction_date', { ascending: false });
+
+                setSettlements(settlementData || []);
+
+                const { data: expensesData } = await supabase
+                    .from('supplier_expenses')
+                    .select('*')
+                    .eq('supplier_id', targetId);
+                
+                setRealExpensesData(expensesData || []);
+
+            } catch (err) {
+                console.error('Error fetching settlements/expenses:', err);
+            }
+        };
+
+        if (supplierId || user?.id) {
+            fetchFinanceTables();
+        }
+    }, [supplierId, user]);
+
+    // 3. Process calculations when coreOrders or settlements load
+    useEffect(() => {
+        if (ordersLoading) return;
+
+        // A. Process Order Transactions
+        const realTransactions: Transaction[] = coreOrders.map((order) => {
+            let type: Transaction['type'] = 'إيراد';
+            let amount = order.totalAmount;
+            let status: Transaction['status'] = 'معلق';
+
+            if (['delivered', 'تم التسليم', 'مكتمل'].includes(order.status)) {
+                status = 'مكتمل';
+            } else if (['cancelled', 'ملغية', 'ملغى'].includes(order.status)) {
+                amount = 0;
+                status = 'مكتمل';
+            } else if (['returned', 'مرتجعة', 'مرتجع'].includes(order.status)) {
+                type = 'مرجعات';
+                amount = -order.totalAmount;
+                status = 'مُعاد';
+            }
+
+            return {
+                id: order.id,
+                type,
+                description: `طلب #${order.id.slice(0, 8)}`,
+                amount,
+                date: order.createdAt,
+                status,
+                customer: order.customer?.name || 'عميل'
+            };
+        });
+
+        // B. Fee Transactions (Virtual)
+        const feeTransactions: Transaction[] = coreOrders
+            .filter(o => ['delivered', 'تم التسليم', 'مكتمل'].includes(o.status))
+            .map(o => {
+                const isSettled = settlements.some(s => s.description?.includes(o.id.slice(0, 8)));
                 return {
-                    id: order.id,
-                    type,
-                    description: `طلب #${order.order_number || order.id.slice(0, 8)}`,
-                    amount,
-                    date: order.created_at,
-                    status,
-                    customer: order.user_name || 'عميل'
+                    id: `fee-${o.id}`,
+                    type: 'رسوم',
+                    description: `رسوم المنصة - طلب #${o.id.slice(0, 8)}`,
+                    amount: -(o.totalAmount * commissionRate / 100),
+                    date: o.createdAt,
+                    status: isSettled ? 'مكتمل' : 'معلق', // 'مكتمل' maps to completed, 'معلق' for pending yellow
+                    customer: o.customer?.name || 'عميل'
                 };
             });
 
-            // B. Fee Transactions (Virtual)
-            const feeTransactions: Transaction[] = orders
-                .filter((o: any) => o.status === 'delivered')
-                .map((o: any) => ({
-                    id: `fee-${o.id}`,
-                    type: 'رسوم',
-                    description: `رسوم المنصة - طلب #${o.order_number || o.id.slice(0, 8)}`,
-                    amount: -(o.total_amount * 0.025),
-                    date: o.created_at,
-                    status: 'مخصوم',
-                    customer: 'Smart Dental'
-                }));
+        // C. Settlement Transactions
+        const settlementTransactions: Transaction[] = settlements.map((tx: any) => ({
+            id: tx.id,
+            type: 'تسوية',
+            description: tx.description || 'تسوية عمولة المنصة',
+            amount: -Number(tx.amount),
+            date: tx.transaction_date,
+            status: 'مكتمل',
+            customer: 'المنصة'
+        }));
 
-            // C. Settlement Transactions
-            const settlementTransactions: Transaction[] = (settlements || []).map((tx: any) => ({
-                id: tx.id,
-                type: 'تسوية',
-                description: tx.description || 'تسوية عمولة المنصة',
-                amount: -Number(tx.amount),
-                date: tx.transaction_date,
-                status: 'مكتمل',
-                customer: 'المنصة'
-            }));
+        const allTransactions = [...realTransactions, ...feeTransactions, ...settlementTransactions].sort((a, b) =>
+            new Date(b.date).getTime() - new Date(a.date).getTime()
+        );
 
-            // Merge all Transactions
-            const allTransactions = [...realTransactions, ...feeTransactions, ...settlementTransactions].sort((a, b) =>
-                new Date(b.date).getTime() - new Date(a.date).getTime()
-            );
+        setTransactions(allTransactions);
 
-            setTransactions(allTransactions);
+        // Calculate Stats
+        const deliveredOrders = coreOrders.filter(o => ['delivered', 'تم التسليم', 'مكتمل'].includes(o.status));
+        const totalRevenue = deliveredOrders.reduce((sum, o) => sum + o.totalAmount, 0);
 
-            // 2. Calculate Stats
-            const deliveredOrders = orders.filter((o: any) => o.status === 'delivered');
-            const totalRevenue = deliveredOrders.reduce((sum: number, o: any) => sum + o.total_amount, 0);
+        const now = new Date();
+        const monthlyRevenue = deliveredOrders
+            .filter(o => isSameMonth(new Date(o.createdAt), now))
+            .reduce((sum, o) => sum + o.totalAmount, 0);
 
-            const now = new Date();
-            const monthlyRevenue = deliveredOrders
-                .filter((o: any) => isSameMonth(new Date(o.created_at), now))
-                .reduce((sum: number, o: any) => sum + o.total_amount, 0);
+        const returns = coreOrders
+            .filter(o => ['returned', 'مرتجعة', 'مرتجع'].includes(o.status))
+            .reduce((sum, o) => sum + o.totalAmount, 0);
 
-            const returns = orders
-                .filter((o: any) => o.status === 'returned')
-                .reduce((sum: number, o: any) => sum + o.total_amount, 0);
+        const platformFees = (totalRevenue * commissionRate) / 100;
+        const realExpensesTotal = realExpensesData.reduce((sum, e) => sum + Number(e.amount), 0);
+        const totalExpenses = platformFees + realExpensesTotal;
 
-            const platformFees = totalRevenue * 0.025;
+        const pendingPayments = coreOrders
+            .filter(o => ['pending', 'processing', 'shipped', 'معلقة', 'قيد التجهيز', 'جاري التجهيز', 'تم الشحن'].includes(o.status))
+            .reduce((sum, o) => sum + o.totalAmount, 0);
 
-            const realExpensesTotal = (realExpensesData || []).reduce((sum, e) => sum + Number(e.amount), 0);
-            const totalExpenses = platformFees + realExpensesTotal;
-            const netProfit = totalRevenue - totalExpenses - returns;
+        const lastMonth = subMonths(now, 1);
+        const lastMonthRevenue = deliveredOrders
+            .filter(o => isSameMonth(new Date(o.createdAt), lastMonth))
+            .reduce((sum, o) => sum + o.totalAmount, 1);
 
-            const pendingPayments = orders
-                .filter((o: any) => ['pending', 'processing', 'shipped'].includes(o.status))
-                .reduce((sum: number, o: any) => sum + o.total_amount, 0);
+        const growth = monthlyRevenue > 0
+            ? Math.round(((monthlyRevenue - lastMonthRevenue) / lastMonthRevenue) * 100)
+            : 0;
 
-            // Growth
-            const lastMonth = subMonths(now, 1);
-            const lastMonthRevenue = deliveredOrders
-                .filter((o: any) => isSameMonth(new Date(o.created_at), lastMonth))
-                .reduce((sum: number, o: any) => sum + o.total_amount, 1);
+        const totalSettled = settlements.reduce((sum, tx) => sum + Number(tx.amount), 0);
+        const pendingFees = dbPendingCommission > 0 ? dbPendingCommission : (platformFees - totalSettled);
 
-            const growth = monthlyRevenue > 0
-                ? Math.round(((monthlyRevenue - lastMonthRevenue) / lastMonthRevenue) * 100)
-                : 0;
+        setStats({
+            totalRevenue,
+            monthlyRevenue,
+            totalExpenses,
+            netProfit: totalRevenue - totalExpenses - returns,
+            pendingPayments,
+            platformFees,
+            returns,
+            growth,
+            totalSettled,
+            pendingFees
+        });
 
-            const totalSettled = (settlements || []).reduce((sum, tx) => sum + Number(tx.amount), 0);
+        // Revenue Chart Data
+        const chartData: RevenueData[] = [];
+        for (let i = 5; i >= 0; i--) {
+            const date = subMonths(now, i);
+            const monthStr = format(date, 'MMM', { locale: ar });
+            
+            const monthOrders = deliveredOrders.filter(o => isSameMonth(new Date(o.createdAt), date));
+            const amount = monthOrders.reduce((sum, o) => sum + o.totalAmount, 0);
 
-            // Pending Fees Calculation
-            const { data: supplierData } = await supabase.from('suppliers').select('pending_commission').eq('id', supplierId).single();
-            const pendingFees = supplierData?.pending_commission || (platformFees - totalSettled);
-
-            setStats({
-                totalRevenue,
-                monthlyRevenue,
-                totalExpenses,
-                netProfit,
-                pendingPayments: pendingPayments, // Pending Revenue
-                platformFees,
-                returns,
-                growth,
-                totalSettled,
-                pendingFees
+            chartData.push({
+                month: monthStr,
+                amount,
+                orders: monthOrders.length
             });
-
-            // 3. Revenue Chart Data
-            const chartData: RevenueData[] = [];
-            for (let i = 5; i >= 0; i--) {
-                const date = subMonths(now, i);
-                const monthName = format(date, 'MMMM', { locale: ar });
-                const monthOrders = deliveredOrders.filter((o: any) => isSameMonth(new Date(o.created_at), date));
-                const amount = monthOrders.reduce((sum: number, o: any) => sum + o.total_amount, 0);
-
-                chartData.push({
-                    month: monthName,
-                    amount,
-                    orders: monthOrders.length
-                });
-            }
-            setRevenueData(chartData);
-
-            // 4. Expenses Breakdown
-            const expenseCategories = (realExpensesData || []).reduce((acc: any, curr: any) => {
-                acc[curr.category] = (acc[curr.category] || 0) + Number(curr.amount);
-                return acc;
-            }, {});
-
-            const mappedExpenses: ExpenseData[] = [
-                { category: 'رسوم المنصة', amount: platformFees, percentage: totalExpenses > 0 ? Math.round((platformFees / totalExpenses) * 100) : 0, color: 'bg-blue-500' },
-                ...Object.entries(expenseCategories).map(([cat, amount]: any, index) => ({
-                    category: cat,
-                    amount: amount,
-                    percentage: totalExpenses > 0 ? Math.round((amount / totalExpenses) * 100) : 0,
-                    color: ['bg-orange-500', 'bg-green-500', 'bg-purple-500', 'bg-red-500'][index % 4]
-                }))
-            ];
-            setExpenses(mappedExpenses);
-
-        } catch (error) {
-            console.error('Error fetching finance data:', error);
-        } finally {
-            setLoading(false);
         }
-    };
+        setRevenueData(chartData);
 
-    useEffect(() => {
-        fetchFinanceData();
-    }, [user]);
+        // Expenses Categories
+        const categoryMap: Record<string, number> = {};
+        realExpensesData.forEach(e => {
+            const cat = e.category || 'أخرى';
+            categoryMap[cat] = (categoryMap[cat] || 0) + Number(e.amount);
+        });
+
+        const categoryColors = ['#10B981', '#3B82F6', '#8B5CF6', '#F59E0B', '#EF4444', '#6B7280'];
+        const expenseItems: ExpenseData[] = Object.entries(categoryMap).map(([category, amount], index) => ({
+            category,
+            amount,
+            percentage: totalExpenses > 0 ? Math.round((amount / totalExpenses) * 100) : 0,
+            color: categoryColors[index % categoryColors.length]
+        }));
+
+        if (platformFees > 0) {
+            expenseItems.push({
+                category: 'رسوم المنصة',
+                amount: platformFees,
+                percentage: totalExpenses > 0 ? Math.round((platformFees / totalExpenses) * 100) : 0,
+                color: '#EC4899'
+            });
+        }
+
+        setExpenses(expenseItems);
+        setLoading(false);
+
+    }, [coreOrders, settlements, realExpensesData, ordersLoading, commissionRate]);
 
     return {
         stats,
         revenueData,
         expenses,
         transactions,
-        loading,
-        refresh: fetchFinanceData
+        loading: ordersLoading || loading
     };
 };

@@ -167,7 +167,6 @@ export const useFinance = (clinicId?: string, patientId?: string, staffId?: stri
                 recorded_by_staff_id: !isNaN(Number(recorderStaffId)) ? recorderStaffId : null,
                 // Removed doctor_id and recorded_by
 
-                assistant_id: t.assistantId || null,
                 treatment_id: t.treatmentId || null,
                 session_id: t.sessionId || null,
                 inventory_item_id: t.inventoryItemId || null,

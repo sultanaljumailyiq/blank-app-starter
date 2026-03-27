@@ -100,10 +100,13 @@ export const useSupplierOrders = () => {
     useEffect(() => {
         const fetchStats = async () => {
             try {
-                // Count Clinics directly
-                const { count: clinicsCount } = await supabase
-                    .from('clinics')
-                    .select('*', { count: 'exact', head: true });
+                // Count Unique Customers from store_orders for this supplier
+                const { data: ordersData } = await supabase
+                    .from('store_orders')
+                    .select('user_name')
+                    .eq('supplier_id', supplierId || user?.id);
+
+                const uniqueCustomersCount = new Set(ordersData?.map(o => o.user_name).filter(Boolean) || []).size;
 
                 // Views from products (sum views for this supplier)
                 const { data: productsData } = await supabase
@@ -114,8 +117,8 @@ export const useSupplierOrders = () => {
                 const totalViews = productsData?.reduce((acc, curr) => acc + (curr.views || 0), 0) || 0;
 
                 setPlatformStats({
-                    totalCustomers: (clinicsCount || 0),
-                    totalClinics: clinicsCount || 0,
+                    totalCustomers: uniqueCustomersCount,
+                    totalClinics: uniqueCustomersCount, // Placeholder or same fallback
                     totalLabs: 0,
                     monthlyViews: totalViews
                 });

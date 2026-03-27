@@ -38,7 +38,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     id: userId,
     email: email,
     name: meta?.full_name || email.split('@')[0],
-    role: (meta?.role as UserRole) || 'doctor',
+    role: (meta?.role as UserRole) || null,
     phone: meta?.phone || '',
     avatar: ''
   });

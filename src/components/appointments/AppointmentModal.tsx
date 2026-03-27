@@ -7,6 +7,7 @@ import { appointmentTypes, doctors as defaultDoctors } from '../../data/mock/app
 import { PatientSearch, SelectedPatientCard } from './PatientSearch';
 import { StaffSelector } from './StaffSelector';
 import { TimeSlotSelector } from './TimeSlotSelector';
+import { useClinics } from '../../hooks/useClinics';
 
 interface AppointmentModalProps {
   isOpen: boolean;
@@ -47,6 +48,9 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
   const [estimatedCost, setEstimatedCost] = useState<string>('');
 
 
+
+  const { clinics } = useClinics();
+  const currentClinic = clinics.find(c => c.id === clinicId);
 
   const [currentStep, setCurrentStep] = useState<'patient' | 'doctor' | 'datetime' | 'details'>('patient');
   const [isLoading, setIsLoading] = useState(false);
@@ -109,6 +113,31 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
 
 
 
+  const convertTo24h = (timeStr: string): string => {
+    if (!timeStr) return '';
+    if (timeStr.includes('AM') || timeStr.includes('PM')) {
+      const [time, ampm] = timeStr.split(' ');
+      const [h, m] = time.split(':');
+      let hours = parseInt(h, 10);
+      if (ampm === 'PM' && hours < 12) hours += 12;
+      if (ampm === 'AM' && hours === 12) hours = 0;
+      return `${hours.toString().padStart(2, '0')}:${m}`;
+    }
+    return timeStr; // Already 24h
+  };
+
+  const formatTime12h = (time24: string): string => {
+    if (!time24) return '';
+    const [hoursStr, minutesStr] = time24.split(':');
+    let hours = parseInt(hoursStr, 10);
+    const suffix = hours >= 12 ? 'مساءً' : 'صباحاً';
+
+    hours = hours % 12;
+    hours = hours ? hours : 12; // the hour '0' should be '12'
+
+    return `${hours.toString().padStart(2, '0')}:${minutesStr} ${suffix}`;
+  };
+
   // تحميل بيانات الموعد للتحديث
   const loadAppointmentData = (appointment: Appointment) => {
     // Create doctor object from appointment data
@@ -137,7 +166,7 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
     setSelectedPatient(patient);
     setSelectedDoctor(doctor);
     setSelectedDate(appointment.date);
-    setSelectedTime(appointment.startTime);
+    setSelectedTime(convertTo24h(appointment.startTime));
     setAppointmentType(appointment.type);
     setDuration(appointment.duration);
     setPriority(appointment.priority);
@@ -327,7 +356,7 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
                 {[
                   { id: 'patient', label: 'المريض', icon: User, isCompleted: !!selectedPatient },
                   { id: 'doctor', label: 'الطبيب', icon: Stethoscope, isCompleted: !!selectedDoctor },
-                  { id: 'datetime', label: 'الوقت', icon: Calendar, isCompleted: !!selectedDate && !!selectedTime },
+                  { id: 'datetime', label: 'تفاصيل الموعد', icon: Calendar, isCompleted: !!selectedDate && !!selectedTime },
                   { id: 'details', label: 'التفاصيل', icon: FileText, isCompleted: false } // Details is last
                 ].map((stepItem, index, array) => {
                   const isActive = currentStep === stepItem.id;
@@ -432,52 +461,6 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
             {/* خطوة اختيار التاريخ والوقت */}
             {currentStep === 'datetime' && (
               <div className="space-y-6">
-                {/* اختيار التاريخ */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    <Calendar className="w-4 h-4 inline ml-1" />
-                    تاريخ الموعد
-                  </label>
-                  <input
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    min={new Date().toISOString().split('T')[0]}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  />
-                  {errors.date && (
-                    <div className="text-red-600 text-sm mt-1">{errors.date}</div>
-                  )}
-                </div>
-
-
-
-                {/* اختيار الوقت */}
-                {selectedDate && selectedDoctor && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      <Clock className="w-4 h-4 inline ml-1" />
-                      وقت الموعد
-                    </label>
-                    <TimeSlotSelector
-                      selectedDate={selectedDate}
-                      selectedDoctor={selectedDoctor}
-                      duration={duration}
-                      selectedTime={selectedTime}
-                      onSelectTime={setSelectedTime}
-                      excludeAppointmentId={editingAppointment?.id}
-                    />
-                    {errors.time && (
-                      <div className="text-red-600 text-sm mt-1">{errors.time}</div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* خطوة التفاصيل */}
-            {currentStep === 'details' && (
-              <div className="space-y-6">
                 {/* نوع الموعد */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -502,10 +485,9 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
                     ))}
                   </div>
                 </div>
-
-                {/* Duration & Status Row - Moved Here */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Duration */}
+                {/* Duration & Date Row */}
+                <div className="grid grid-cols-2 gap-4">
+                  {/* مدة الموعد */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       مدة الموعد (بالدقائق)
@@ -526,6 +508,95 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
                     </select>
                   </div>
 
+                  {/* اختيار التاريخ */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <Calendar className="w-4 h-4 inline ml-1" />
+                      تاريخ الموعد
+                    </label>
+                    <input
+                      type="date"
+                      value={selectedDate}
+                      onChange={(e) => setSelectedDate(e.target.value)}
+                      min={new Date().toISOString().split('T')[0]}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    />
+                    {errors.date && (
+                      <div className="text-red-600 text-sm mt-1">{errors.date}</div>
+                    )}
+                  </div>
+                </div>
+
+
+
+                {/* اختيار الوقت */}
+                {selectedDate && selectedDoctor && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <Clock className="w-4 h-4 inline ml-1" />
+                      وقت الموعد
+                    </label>
+                    <TimeSlotSelector
+                      selectedDate={selectedDate}
+                      selectedDoctor={selectedDoctor}
+                      duration={duration}
+                      selectedTime={selectedTime}
+                      onSelectTime={setSelectedTime}
+                      excludeAppointmentId={editingAppointment?.id}
+                      clinicWorkingHours={currentClinic?.workingHours}
+                    />
+                    {errors.time && (
+                      <div className="text-red-600 text-sm mt-1">{errors.time}</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* خطوة التفاصيل */}
+            {currentStep === 'details' && (
+              <div className="space-y-6">
+                {/* ملخص الموعد المختار */}
+                <div className="p-4 bg-purple-50/80 rounded-xl border border-purple-100 hover:border-purple-200 shadow-sm space-y-3 mb-4 transition-all">
+                  <h4 className="font-bold text-sm text-purple-900 border-b border-purple-100 pb-2 mb-2 flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 text-purple-600" />
+                    مراجعة بيانات الموعد قبل الحفظ
+                  </h4>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                    <div onClick={() => setCurrentStep('patient')} className="flex items-center gap-2 p-3 bg-white/60 hover:bg-white rounded-lg border border-transparent hover:border-purple-200 cursor-pointer transition-all">
+                      <div className="p-2 bg-purple-100 rounded-lg text-purple-700">
+                        <User className="w-4 h-4" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs text-gray-500">المريض</span>
+                        <span className="font-bold text-gray-900">{selectedPatient?.fullName || 'عابر'}</span>
+                      </div>
+                    </div>
+
+                    <div onClick={() => setCurrentStep('doctor')} className="flex items-center gap-2 p-3 bg-white/60 hover:bg-white rounded-lg border border-transparent hover:border-purple-200 cursor-pointer transition-all">
+                      <div className="p-2 bg-blue-100 rounded-lg text-blue-700">
+                        <Stethoscope className="w-4 h-4" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs text-gray-500">الطبيب المعالج</span>
+                        <span className="font-bold text-gray-900">{selectedDoctor?.name || 'أي طبيب'}</span>
+                      </div>
+                    </div>
+
+                    <div onClick={() => setCurrentStep('datetime')} className="flex items-center gap-2 p-3 bg-white/60 hover:bg-white rounded-lg border border-transparent hover:border-purple-200 cursor-pointer transition-all col-span-2 md:col-span-1">
+                      <div className="p-2 bg-green-100 rounded-lg text-green-700">
+                        <Calendar className="w-4 h-4" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs text-gray-500">الوقت والتاريخ</span>
+                        <span className="font-bold text-gray-900 text-xs">{selectedDate || '...'} | {selectedTime ? formatTime12h(selectedTime) : '...'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Duration & Status Row - Removed Duration */}
+                <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
                   {/* Status */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">حالة الموعد</label>

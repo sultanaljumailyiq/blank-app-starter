@@ -30,17 +30,25 @@ export const StoreOrdersSection: React.FC<StoreOrdersSectionProps> = ({ supplier
                 .from('store_orders')
                 .select(`
                     *,
-                    supplier:suppliers(name),
                     items:store_order_items (
-                        product:products(name, images),
+                        id,
+                        product_id,
                         quantity,
-                        price_at_purchase
+                        price_at_purchase,
+                        item_status,
+                        return_requested,
+                        return_reason,
+                        product:products(name, image_url)
                     )
                 `)
                 .order('created_at', { ascending: false });
 
             if (supplierId) {
-                query = query.eq('supplier_id', supplierId);
+                if (supplierId.includes(',')) {
+                    query = query.or(supplierId.split(',').map(id => `supplier_id.eq.${id}`).join(','));
+                } else {
+                    query = query.eq('supplier_id', supplierId);
+                }
             }
 
             const { data, error } = await query;

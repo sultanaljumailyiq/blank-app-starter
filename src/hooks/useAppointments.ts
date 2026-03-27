@@ -23,7 +23,7 @@ export const useAppointments = (clinicId?: string) => {
                 .order('appointment_date', { ascending: false })
                 .order('appointment_time', { ascending: false });
 
-            if (clinicId) {
+            if (clinicId && clinicId !== 'all') {
                 query = query.eq('clinic_id', clinicId);
             }
 
@@ -36,7 +36,7 @@ export const useAppointments = (clinicId?: string) => {
                     .select('*, staff:staff_id(full_name)')
                     .order('created_at', { ascending: false }); // Fallback to created_at
 
-                if (clinicId) {
+                if (clinicId && clinicId !== 'all') {
                     query = query.eq('clinic_id', clinicId);
                 }
                 const result = await query;

@@ -99,6 +99,7 @@ export function useStore() {
                         order_number: subOrderNumber,
                         user_id: userId,
                         user_name: orderUserName,
+                        ordered_by: profileName,
                         supplier_id: supplierId,
                         total_amount: supplierTotal,
                         status: 'pending',
@@ -115,6 +116,7 @@ export function useStore() {
                 const itemsToInsert = supplierItems.map(item => ({
                     order_id: orderData.id,
                     product_id: item.product_id,
+                    supplier_id: supplierId,
                     quantity: item.quantity,
                     price_at_purchase: item.price_at_purchase
                 }));

@@ -65,7 +65,7 @@ export const useTasks = (clinicId?: string) => {
                 .from('clinic_tasks')
                 .select(`
                     *,
-                    assigned_staff:assigned_to ( id, name )
+                    assigned_staff:assigned_to ( id, full_name )
                 `)
                 .order('due_date', { ascending: true });
 
@@ -94,7 +94,7 @@ export const useTasks = (clinicId?: string) => {
                     creatorRole: 'admin',
                     clinicScope: { type: 'specific', ids: [t.clinic_id?.toString()], names: [] },
                     assignedScope: t.assigned_staff
-                        ? { type: 'specific', ids: [t.assigned_staff.id.toString()], names: [t.assigned_staff.name] }
+                        ? { type: 'specific', ids: [t.assigned_staff.id.toString()], names: [t.assigned_staff.full_name] }
                         : { type: 'all' },
                     subtasks: [],
                     progress: t.status === 'completed' ? 100 : 0,

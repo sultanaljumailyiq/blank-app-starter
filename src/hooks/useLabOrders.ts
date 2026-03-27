@@ -66,7 +66,7 @@ export const useLabOrders = (options?: { clinicId?: string, laboratoryId?: strin
 
             // Apply filters
             console.log('Fetching orders with options:', options, 'User Role:', user.role);
-            if (options?.clinicId) {
+            if (options?.clinicId && options.clinicId !== 'all') {
                 console.log('Filtering strictly by clinicId:', options.clinicId);
                 // Handle possible string/number mismatch by not assuming type, or forcing one if DB is strictly INT
                 // But PostgREST handles matching "1" to 1.

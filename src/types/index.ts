@@ -1,6 +1,6 @@
 // أنواع البيانات للتطبيق
 
-export type UserRole = 'doctor' | 'supplier' | 'laboratory' | 'staff' | 'admin';
+export type UserRole = 'doctor' | 'supplier' | 'laboratory' | 'staff' | 'admin' | 'newuser';
 
 export interface User {
   id: string;
@@ -39,7 +39,6 @@ export interface Clinic {
   // Added based on usage
   governorate?: string; // Added for location management
   address?: string; // Added for unified location architecture
-  city?: string; // Added for city-level location
   email?: string;
   reviews?: number;
   owner_id?: string; // Links to Auth User
@@ -55,12 +54,14 @@ export interface Clinic {
 export interface ClinicInvitation {
   id: string;
   clinicId: number;
+  staffId?: string;    // if set, accept → update this staff record instead of creating new
   clinic?: Clinic;
   email: string;
   role: string;
   status: 'pending' | 'accepted' | 'rejected';
   createdBy: string;
   createdAt: string;
+  isStaffRecord?: boolean;
 }
 
 // Re-exporting from specific file to avoid duplication
