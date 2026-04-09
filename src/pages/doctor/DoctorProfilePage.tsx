@@ -25,6 +25,16 @@ const SubscriptionCard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [subscription, setSubscription] = useState<any>(null);
 
+  // Helper: calculate expiry date from billing_period
+  const calcExpiry = (createdAt: string, billingPeriod?: string) => {
+    const start = new Date(createdAt);
+    const end = new Date(start);
+    if (billingPeriod === 'yearly') end.setFullYear(end.getFullYear() + 1);
+    else if (billingPeriod === 'semi_annual') end.setMonth(end.getMonth() + 6);
+    else end.setMonth(end.getMonth() + 1); // default monthly
+    return end;
+  };
+
   useEffect(() => {
     const fetchSubscription = async () => {
       if (!user) return;
@@ -43,24 +53,25 @@ const SubscriptionCard: React.FC = () => {
         if (error && error.code !== 'PGRST116') throw error; // PGRST116 is "Row not found"
 
         if (request) {
-          // Calculate expiry (Assuming 30 days for monthly) - simplistic
-          const startDate = new Date(request.created_at);
-          const isYearly = request.price_amount > 100000; // rough heuristic or check plan duration
-          const durationDays = isYearly ? 365 : 30;
-          const endDate = new Date(startDate);
-          endDate.setDate(endDate.getDate() + durationDays);
+          const billingPeriod = request.payment_details?.billing_period;
+          const expiryDate = calcExpiry(request.created_at, billingPeriod);
+          const discountApplied = request.payment_details?.discount_applied || request.payment_details?.discountApplied || 0;
+          const basePrice = request.amount_paid || request.plan?.price?.monthly || 0;
 
           setSubscription({
             ...request,
             planName: request.plan?.name || 'Unknown Plan',
             planNameEn: request.plan?.name_en || 'Plan',
-            expiryDate: endDate,
-            price: request.payment_details?.discountApplied ? (request.plan?.price?.monthly - request.payment_details.discountApplied) : request.plan?.price?.monthly,
+            expiryDate,
+            isExpired: new Date() > expiryDate,
+            billingPeriod: billingPeriod || 'monthly',
+            discountApplied,
+            price: Number(basePrice),
             features: request.plan?.features || [],
-            maxClinics: request.plan?.price?.settings?.maxClinics || 1,
-            maxPatients: request.plan?.price?.settings?.maxPatients || 50,
-            maxServices: request.plan?.price?.settings?.maxServices || 10,
-            aiRequestLimit: request.plan?.price?.settings?.aiRequestLimit || 0
+            maxClinics: request.plan?.limits?.max_clinics || 1,
+            maxPatients: request.plan?.limits?.max_patients || 50,
+            maxServices: request.plan?.limits?.max_services || 10,
+            aiRequestLimit: request.plan?.limits?.max_ai || 0
           });
         }
       } catch (err) {
@@ -73,6 +84,7 @@ const SubscriptionCard: React.FC = () => {
     fetchSubscription();
   }, [user]);
 
+
   if (loading) return <div className="h-64 bg-gray-100 rounded-2xl animate-pulse" />;
 
   // Default / Free Plan State if no subscription found
@@ -80,6 +92,9 @@ const SubscriptionCard: React.FC = () => {
     planName: 'الباقة المجانية',
     planNameEn: 'Free Plan',
     expiryDate: null,
+    isExpired: false,
+    billingPeriod: 'monthly',
+    discountApplied: 0,
     price: 0,
     maxClinics: 1,
     maxPatients: 50,
@@ -88,8 +103,13 @@ const SubscriptionCard: React.FC = () => {
     isFree: true
   };
 
+  const billingLabel = sub.billingPeriod === 'yearly' ? 'سنوي' : sub.billingPeriod === 'semi_annual' ? '6 أشهر' : 'شهري';
+  const activeStatus = sub.isFree ? 'باقة افتراضية' : sub.isExpired ? 'منتهية الصلاحية' : 'نشط حالياً';
+  const statusColor = sub.isFree ? 'bg-gray-500/20' : sub.isExpired ? 'bg-red-500/20' : 'bg-green-500/20';
+
+
   return (
-    <Card className={`bg-gradient-to-br ${sub.isFree ? 'from-gray-700 to-gray-900' : 'from-indigo-900 to-blue-900'} text-white border-none overflow-hidden relative`}>
+    <Card className={`bg-gradient-to-br ${sub.isFree ? 'from-gray-700 to-gray-900' : sub.isExpired ? 'from-red-900 to-gray-900' : 'from-indigo-900 to-blue-900'} text-white border-none overflow-hidden relative`}>
       <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-16 -mt-16 blur-2xl"></div>
       <div className="absolute bottom-0 left-0 w-64 h-64 bg-white/5 rounded-full -ml-16 -mb-16 blur-2xl"></div>
 
@@ -97,13 +117,19 @@ const SubscriptionCard: React.FC = () => {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <span className={`px-3 py-1 rounded-full text-xs font-medium backdrop-blur-sm border border-white/10 ${sub.isFree ? 'bg-gray-500/20' : 'bg-green-500/20'}`}>
-                {sub.isFree ? 'باقة افتراضية' : 'نشط حالياً'}
+              <span className={`px-3 py-1 rounded-full text-xs font-medium backdrop-blur-sm border border-white/10 ${statusColor}`}>
+                {activeStatus}
               </span>
+              {!sub.isFree && (
+                <span className="text-white/60 text-sm bg-white/10 px-2 py-0.5 rounded-full">{billingLabel}</span>
+              )}
               {sub.expiryDate && (
-                <span className="text-white/60 text-sm">تاريخ التجديد: {sub.expiryDate.toLocaleDateString('ar-EG')}</span>
+                <span className={`text-sm ${sub.isExpired ? 'text-red-300' : 'text-white/60'}`}>
+                  {sub.isExpired ? 'انتهت في: ' : 'تنتهي في: '}{sub.expiryDate.toLocaleDateString('ar-EG')}
+                </span>
               )}
             </div>
+
             <h2 className="text-3xl font-bold mb-2">{sub.planName}</h2>
             <p className="text-blue-100 max-w-xl">
               {sub.isFree ? 'قم بالترقية للحصول على المزيد من المميزات وإدارة عيادات متعددة.' : 'استمتع بميزات باقتك الحالية.'}
@@ -253,6 +279,24 @@ export const DoctorProfilePage: React.FC = () => {
 
   // Fetch Subscription History
   const [subscriptionHistory, setSubscriptionHistory] = useState<any[]>([]);
+
+  // Helper: compute expiry from billing_period stored in payment_details
+  const computeExpiry = (createdAt: string, paymentDetails: any) => {
+    const bp = paymentDetails?.billing_period;
+    const start = new Date(createdAt);
+    const end = new Date(start);
+    if (bp === 'yearly') end.setFullYear(end.getFullYear() + 1);
+    else if (bp === 'semi_annual') end.setMonth(end.getMonth() + 6);
+    else end.setMonth(end.getMonth() + 1);
+    return end;
+  };
+
+  const billingPeriodLabel = (bp?: string) => {
+    if (bp === 'yearly') return 'سنوي';
+    if (bp === 'semi_annual') return '6 أشهر';
+    return 'شهري';
+  };
+
   useEffect(() => {
     const fetchHistory = async () => {
       if (!user) return;
@@ -275,6 +319,7 @@ export const DoctorProfilePage: React.FC = () => {
       fetchHistory();
     }
   }, [user, activeTab]);
+
 
 
 
@@ -524,40 +569,83 @@ export const DoctorProfilePage: React.FC = () => {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm text-gray-600">
                   <thead>
-                    <tr className="border-b border-gray-100">
-                      <th className="text-right py-3 px-4 font-semibold text-gray-900">رقم الطلب</th>
-                      <th className="text-right py-3 px-4 font-semibold text-gray-900">الباقة</th>
-                      <th className="text-right py-3 px-4 font-semibold text-gray-900">تاريخ الطلب</th>
-                      <th className="text-right py-3 px-4 font-semibold text-gray-900">المبلغ</th>
-                      <th className="text-right py-3 px-4 font-semibold text-gray-900">الحالة</th>
-                      <th className="text-right py-3 px-4 font-semibold text-gray-900">طريقة الدفع</th>
+                    <tr className="border-b border-gray-100 bg-gray-50/50">
+                      <th className="text-right py-3 px-3 font-semibold text-gray-900">رقم الطلب</th>
+                      <th className="text-right py-3 px-3 font-semibold text-gray-900">الباقة</th>
+                      <th className="text-right py-3 px-3 font-semibold text-gray-900">المدة</th>
+                      <th className="text-right py-3 px-3 font-semibold text-gray-900">تاريخ الطلب</th>
+                      <th className="text-right py-3 px-3 font-semibold text-gray-900">تاريخ الانتهاء</th>
+                      <th className="text-right py-3 px-3 font-semibold text-gray-900">المبلغ المدفوع</th>
+                      <th className="text-right py-3 px-3 font-semibold text-gray-900">الخصم</th>
+                      <th className="text-right py-3 px-3 font-semibold text-gray-900">الحالة</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {subscriptionHistory.length > 0 ? (
-                      subscriptionHistory.map((req: any) => (
-                        <tr key={req.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="py-3 px-4 font-mono text-xs">#{req.id.slice(0, 8)}</td>
-                          <td className="py-3 px-4 font-medium">{req.plan?.name || 'باقة غير معروفة'}</td>
-                          <td className="py-3 px-4" dir="ltr">{new Date(req.created_at).toLocaleDateString('ar-EG')}</td>
-                          <td className="py-3 px-4 font-medium text-gray-900">
-                            {(req.plan?.price?.monthly || 0).toLocaleString()} <span className="text-xs font-normal text-gray-500">د.ع</span>
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium 
-                              ${req.status === 'approved' ? 'bg-green-100 text-green-700' :
-                                req.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                                  'bg-red-100 text-red-700'}`}>
-                              {req.status === 'approved' ? 'نشط' :
-                                req.status === 'pending' ? 'قيد الانتظار' : 'مرفوض/منتهي'}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-xs">{req.payment_methods?.name || req.payment_method || '-'}</td>
-                        </tr>
-                      ))
+                      subscriptionHistory.map((req: any) => {
+                        const bp = req.payment_details?.billing_period;
+                        const expiryDate = computeExpiry(req.created_at, req.payment_details);
+                        const isExpired = req.status === 'approved' && new Date() > expiryDate;
+                        const discount = req.payment_details?.discount_applied || req.payment_details?.discountApplied || 0;
+                        const amountPaid = req.amount_paid || req.plan?.price?.monthly || 0;
+                        
+                        let statusLabel = 'مرفوض';
+                        let statusClass = 'bg-red-100 text-red-700';
+                        if (req.status === 'pending') { statusLabel = 'قيد المراجعة'; statusClass = 'bg-yellow-100 text-yellow-700'; }
+                        else if (req.status === 'approved' && isExpired) { statusLabel = 'منتهي'; statusClass = 'bg-gray-100 text-gray-600'; }
+                        else if (req.status === 'approved') { statusLabel = 'نشط'; statusClass = 'bg-green-100 text-green-700'; }
+
+                        return (
+                          <tr key={req.id} className="hover:bg-gray-50 transition-colors">
+                            <td className="py-3 px-3 font-mono text-xs text-gray-500">#{req.id.slice(0, 8)}</td>
+                            <td className="py-3 px-3">
+                              <div className="flex items-center gap-1.5">
+                                {(() => {
+                                  const period = req.payment_details?.billing_period || 'monthly';
+                                  const durationIcon = period === 'yearly' ? '12' : period === 'semi_annual' ? '6' : '1';
+                                  return (
+                                    <span className="w-5 h-5 flex items-center justify-center bg-blue-600 text-white text-[10px] font-black rounded-md shadow-sm">
+                                      {durationIcon}
+                                    </span>
+                                  );
+                                })()}
+                                <span className="font-bold text-gray-900 text-xs">{req.plan?.name || 'باقة غير معروفة'}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-3">
+                              <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-[10px] font-bold">
+                                {billingPeriodLabel(bp)}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-xs text-gray-600" dir="ltr">
+                              {new Date(req.created_at).toLocaleDateString('ar-EG')}
+                            </td>
+                            <td className={`py-3 px-3 text-[10px] font-bold ${isExpired ? 'text-red-600' : 'text-gray-600'}`} dir="ltr">
+                              {req.status === 'approved' ? expiryDate.toLocaleDateString('ar-EG') : '-'}
+                            </td>
+                            <td className="py-3 px-3 font-bold text-gray-900 text-xs">
+                              {Number(amountPaid).toLocaleString()} <span className="text-[10px] font-normal text-gray-400">د.ع</span>
+                            </td>
+                            <td className="py-3 px-3">
+                              {discount > 0 ? (
+                                <span className="text-green-600 font-bold text-[10px] bg-green-50 px-1.5 py-0.5 rounded border border-green-100">
+                                  −{Number(discount).toLocaleString()} د.ع
+                                </span>
+                              ) : (
+                                <span className="text-gray-300 text-[10px]">—</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${statusClass}`}>
+                                {statusLabel}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
                     ) : (
                       <tr>
-                        <td colSpan={6} className="py-8 text-center text-gray-400">لا توجد سجلات اشتراك سابقة</td>
+                        <td colSpan={8} className="py-8 text-center text-gray-400">لا توجد سجلات اشتراك سابقة</td>
                       </tr>
                     )}
                   </tbody>

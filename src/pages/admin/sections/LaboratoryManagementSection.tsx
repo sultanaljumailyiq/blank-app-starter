@@ -29,8 +29,17 @@ import { LabDetailsModal } from '../components/LabDetailsModal';
 import { toast } from 'sonner';
 import { supabase } from '../../../lib/supabase';
 
+const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  pending: { label: 'معلق', color: 'bg-orange-100 text-orange-700' },
+  in_progress: { label: 'قيد العمل', color: 'bg-blue-100 text-blue-700' },
+  completed: { label: 'مكتمل', color: 'bg-green-100 text-green-700' },
+  delivered: { label: 'تم التسليم', color: 'bg-emerald-100 text-emerald-700' },
+  cancelled: { label: 'ملغي', color: 'bg-red-100 text-red-700' },
+  rejected: { label: 'مرفوض', color: 'bg-red-100 text-red-700' },
+};
+
 const LabOrdersTab = () => {
-  const { fetchLabOrders } = useAdminLabs();
+  const { labs, fetchLabOrders } = useAdminLabs();
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -46,8 +55,26 @@ const LabOrdersTab = () => {
     loadOrders();
   }, []);
 
+  // Calculate total revenue with commission from completed/delivered orders
+  const revenueOrders = orders.filter(o => o.status === 'completed' || o.status === 'delivered');
+  const totalAmount = revenueOrders.reduce((sum, o) => sum + (Number(o.final_amount) || Number(o.price) || 0), 0);
+
   return (
     <div className="space-y-4">
+      {/* Summary Banner */}
+      <div className="flex items-center gap-4 p-4 bg-purple-50 rounded-2xl border border-purple-100">
+        <div className="w-10 h-10 bg-purple-500 text-white rounded-xl flex items-center justify-center">
+          <DollarSign className="w-5 h-5" />
+        </div>
+        <div>
+          <p className="text-sm text-purple-600 font-medium">إجمالي قيمة الطلبات المكتملة والمسلمة</p>
+          <p className="text-xl font-bold text-purple-800">{totalAmount.toLocaleString('ar-IQ')} د.ع</p>
+        </div>
+        <div className="mr-auto text-sm text-gray-500">
+          {revenueOrders.length} طلب من أصل {orders.length}
+        </div>
+      </div>
+
       <h3 className="font-bold flex items-center gap-2">
         <List className="w-5 h-5 text-purple-600" />
         أحدث الطلبات
@@ -56,33 +83,39 @@ const LabOrdersTab = () => {
         <table className="w-full">
           <thead>
             <tr className="border-b border-gray-100">
-              <th className="p-6 text-right text-sm font-bold text-gray-600 bg-gray-50/30">المريض</th>
-              <th className="p-6 text-right text-sm font-bold text-gray-600 bg-gray-50/30">الخدمة</th>
-              <th className="p-6 text-right text-sm font-bold text-gray-600 bg-gray-50/30">الحالة</th>
-              <th className="p-6 text-right text-sm font-bold text-gray-600 bg-gray-50/30">التاريخ</th>
+              <th className="p-4 text-right text-sm font-bold text-gray-600 bg-gray-50/30">المريض</th>
+              <th className="p-4 text-right text-sm font-bold text-gray-600 bg-gray-50/30">الخدمة</th>
+              <th className="p-4 text-right text-sm font-bold text-gray-600 bg-gray-50/30">الحالة</th>
+              <th className="p-4 text-right text-sm font-bold text-gray-600 bg-gray-50/30">السعر (د.ع)</th>
+              <th className="p-4 text-right text-sm font-bold text-gray-600 bg-gray-50/30">التاريخ</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
             {loading ? (
-              <tr><td colSpan={4} className="text-center p-8">جاري التحميل...</td></tr>
+              <tr><td colSpan={5} className="text-center p-8">جاري التحميل...</td></tr>
             ) : orders.length === 0 ? (
-              <tr><td colSpan={4} className="text-center p-8 text-gray-500">لا توجد طلبات</td></tr>
-            ) : orders.map(order => (
-              <tr key={order.id} className="hover:bg-blue-50/30 transition-colors">
-                <td className="p-6 font-medium text-gray-900">{order.patient_name}</td>
-                <td className="p-6 text-sm text-gray-600">{order.service_name}</td>
-                <td className="p-6">
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${order.status === 'completed' ? 'bg-green-100 text-green-700' :
-                    order.status === 'pending' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100'
-                    }`}>
-                    {order.status}
-                  </span>
-                </td>
-                <td className="p-6 text-sm text-gray-400">
-                  {new Date(order.created_at).toLocaleDateString('ar-IQ')}
-                </td>
-              </tr>
-            ))}
+              <tr><td colSpan={5} className="text-center p-8 text-gray-500">لا توجد طلبات</td></tr>
+            ) : orders.map(order => {
+              const amount = Number(order.final_amount) || Number(order.price) || 0;
+              const statusCfg = STATUS_LABELS[order.status] || { label: order.status, color: 'bg-gray-100 text-gray-600' };
+              return (
+                <tr key={order.id} className="hover:bg-blue-50/30 transition-colors">
+                  <td className="p-4 font-medium text-gray-900">{order.patient_name || '—'}</td>
+                  <td className="p-4 text-sm text-gray-600">{order.service_name || order.work_type || '—'}</td>
+                  <td className="p-4">
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${statusCfg.color}`}>
+                      {statusCfg.label}
+                    </span>
+                  </td>
+                  <td className="p-4 font-bold text-gray-900">
+                    {amount > 0 ? amount.toLocaleString('ar-IQ') : <span className="text-gray-400 text-xs">غير محدد</span>}
+                  </td>
+                  <td className="p-4 text-sm text-gray-400">
+                    {new Date(order.created_at).toLocaleDateString('ar-IQ')}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -151,8 +184,24 @@ export const LaboratoryManagementSection: React.FC = () => {
 
   const handleDeactivateLab = async (labId: string) => {
     try {
+      let actualLabId = labId;
+      const { data: existing } = await supabase.from('dental_laboratories').select('id').eq('id', labId).maybeSingle();
+      if (!existing) {
+          const { data: byUser } = await supabase.from('dental_laboratories').select('id').eq('user_id', labId).maybeSingle();
+          if(byUser) actualLabId = byUser.id;
+          else {
+              const lab = labs.find(l => l.id === labId);
+              const { data: newLab, error: insErr } = await supabase.from('dental_laboratories').insert({ 
+                  user_id: labId, 
+                  name: lab?.name || 'مختبر جديد' 
+              }).select('id').single();
+              if (insErr) throw insErr;
+              actualLabId = newLab.id;
+          }
+      }
+
       const { error } = await supabase.rpc('toggle_lab_activation', {
-        p_lab_id: labId,
+        p_lab_id: actualLabId,
         p_action: 'deactivate',
         p_admin_id: null
       });
@@ -182,12 +231,29 @@ export const LaboratoryManagementSection: React.FC = () => {
     }
   };
 
-  const handleActivateLab = async (lab: Laboratory) => {
+  const handleActivateLab = async (lab: any) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      
+      let actualLabId = lab.id;
+      const { data: existing } = await supabase.from('dental_laboratories').select('id').eq('id', lab.id).maybeSingle();
+      
+      if (!existing) {
+          const { data: byUser } = await supabase.from('dental_laboratories').select('id').eq('user_id', lab.user_id || lab.id).maybeSingle();
+          if(byUser) actualLabId = byUser.id;
+          else {
+              const { data: newLab, error: insErr } = await supabase.from('dental_laboratories').insert({ 
+                  user_id: lab.user_id || lab.id, 
+                  name: lab?.name || 'مختبر جديد' 
+              }).select('id').single();
+              if (insErr) throw insErr;
+              actualLabId = newLab.id;
+          }
+      }
+
       // Activate AND verify via RPC
       const { error } = await supabase.rpc('toggle_lab_activation', {
-        p_lab_id: lab.id,
+        p_lab_id: actualLabId,
         p_action: 'activate',
         p_admin_id: user?.id
       });
@@ -572,7 +638,7 @@ export const LaboratoryManagementSection: React.FC = () => {
         }}
         onClearCommission={async (labId) => {
           if (selectedLab) {
-            const success = await clearCommission(labId);
+            const success = await clearCommission(labId, selectedLab.pendingCommission || 0);
             if (success) {
               toast.success('تم تصفية العمولة بنجاح');
               // Don't close modal so user can see the updated "Settlements" tab

@@ -378,6 +378,29 @@ export const LabDetailsModal: React.FC<LabDetailsModalProps> = ({
 
                     {activeTab === 'orders' && (
                         <div className="space-y-4">
+                            {/* Revenue Summary */}
+                            {(() => {
+                                const completedOrders = orders.filter(o => o.status === 'completed' || o.status === 'delivered');
+                                const totalSales = completedOrders.reduce((s, o) => s + (Number(o.final_amount) || Number(o.price) || 0), 0);
+                                const commission = (totalSales * (lab.commissionPercentage || 0)) / 100;
+                                return (
+                                    <div className="grid grid-cols-3 gap-3">
+                                        <div className="p-3 bg-green-50 rounded-xl border border-green-100 text-center">
+                                            <p className="text-xs text-green-600 mb-1">إجمالي قيمة الطلبات</p>
+                                            <p className="font-bold text-green-700">{totalSales.toLocaleString('ar-IQ')} د.ع</p>
+                                        </div>
+                                        <div className="p-3 bg-purple-50 rounded-xl border border-purple-100 text-center">
+                                            <p className="text-xs text-purple-600 mb-1">عمولة المنصة ({lab.commissionPercentage}%)</p>
+                                            <p className="font-bold text-purple-700">{commission.toLocaleString('ar-IQ')} د.ع</p>
+                                        </div>
+                                        <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 text-center">
+                                            <p className="text-xs text-blue-600 mb-1">الطلبات المكتملة</p>
+                                            <p className="font-bold text-blue-700">{completedOrders.length} / {orders.length}</p>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
                             <h3 className="font-bold text-gray-900">سجل الطلبات الحديثة</h3>
                             <div className="border rounded-xl overflow-hidden">
                                 <table className="w-full text-sm text-right">
@@ -389,29 +412,45 @@ export const LabDetailsModal: React.FC<LabDetailsModalProps> = ({
                                             <th className="p-3">التاريخ</th>
                                             <th className="p-3">الحالة</th>
                                             <th className="p-3">السعر</th>
+                                            <th className="p-3">العمولة</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100">
                                         {loadingData ? (
-                                            <tr><td colSpan={6} className="p-4 text-center">جاري التحميل...</td></tr>
+                                            <tr><td colSpan={7} className="p-4 text-center">جاري التحميل...</td></tr>
                                         ) : orders.length === 0 ? (
-                                            <tr><td colSpan={6} className="p-4 text-center text-gray-500">لا توجد طلبات لهذا المختبر</td></tr>
-                                        ) : orders.map(order => (
-                                            <tr key={order.id} className="hover:bg-gray-50">
-                                                <td className="p-3 font-mono text-gray-600">{order.id.slice(0, 8)}</td>
-                                                <td className="p-3">{order.patient_name}</td>
-                                                <td className="p-3">{order.service_name}</td>
-                                                <td className="p-3">{new Date(order.created_at).toLocaleDateString('ar-IQ')}</td>
-                                                <td className="p-3">
-                                                    <span className={`px-2 py-0.5 rounded-full text-xs ${order.status === 'completed' ? 'bg-green-100 text-green-700' :
-                                                        order.status === 'pending' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
-                                                        }`}>
-                                                        {order.status}
-                                                    </span>
-                                                </td>
-                                                <td className="p-3 font-bold text-gray-900">{(order.price || 0).toLocaleString()}</td>
-                                            </tr>
-                                        ))}
+                                            <tr><td colSpan={7} className="p-4 text-center text-gray-500">لا توجد طلبات لهذا المختبر</td></tr>
+                                        ) : orders.map(order => {
+                                            const amount = Number(order.final_amount) || Number(order.price) || 0;
+                                            const comm = (amount * (lab.commissionPercentage || 0)) / 100;
+                                            const statusMap: Record<string, { label: string; color: string }> = {
+                                                pending: { label: 'معلق', color: 'bg-orange-100 text-orange-700' },
+                                                in_progress: { label: 'قيد العمل', color: 'bg-blue-100 text-blue-700' },
+                                                completed: { label: 'مكتمل', color: 'bg-green-100 text-green-700' },
+                                                delivered: { label: 'تم التسليم', color: 'bg-emerald-100 text-emerald-700' },
+                                                cancelled: { label: 'ملغي', color: 'bg-red-100 text-red-700' },
+                                            };
+                                            const statusCfg = statusMap[order.status] || { label: order.status, color: 'bg-gray-100 text-gray-600' };
+                                            return (
+                                                <tr key={order.id} className="hover:bg-gray-50">
+                                                    <td className="p-3 font-mono text-gray-600">{order.id.slice(0, 8)}</td>
+                                                    <td className="p-3">{order.patient_name || '—'}</td>
+                                                    <td className="p-3">{order.service_name || order.work_type || '—'}</td>
+                                                    <td className="p-3">{new Date(order.created_at).toLocaleDateString('ar-IQ')}</td>
+                                                    <td className="p-3">
+                                                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${statusCfg.color}`}>
+                                                            {statusCfg.label}
+                                                        </span>
+                                                    </td>
+                                                    <td className="p-3 font-bold text-gray-900">
+                                                        {amount > 0 ? `${amount.toLocaleString('ar-IQ')} د.ع` : <span className="text-gray-400">—</span>}
+                                                    </td>
+                                                    <td className="p-3 font-medium text-purple-700">
+                                                        {amount > 0 ? `${comm.toLocaleString('ar-IQ')} د.ع` : '—'}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>

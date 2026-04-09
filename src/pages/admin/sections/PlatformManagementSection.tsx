@@ -15,7 +15,8 @@ import {
   QrCode,
   Clock,
   Activity,
-  User
+  User,
+  Stethoscope
 } from 'lucide-react';
 import { useAdminData, Agent } from '../../../hooks/useAdminData';
 import { supabase } from '../../../lib/supabase';
@@ -24,7 +25,7 @@ import { AdminModal, FormModal } from '../../../components/admin/AdminModal';
 import { BentoStatCard } from '../../../components/dashboard/BentoStatCard';
 import { Card } from '../../../components/common/Card';
 import { Button } from '../../../components/common/Button';
-import { UsersManager } from './community/UsersManager';
+import { PlatformUsersManager } from './platform/PlatformUsersManager';
 import { ClinicDetailsModal } from '../components/ClinicDetailsModal';
 import { AgentDetailsModal } from '../components/AgentDetailsModal'; // Import new modal
 import { PendingRequestsManager } from './platform/PendingRequestsManager';
@@ -741,12 +742,12 @@ export const PlatformManagementSection: React.FC<PlatformManagementSectionProps>
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
         <BentoStatCard
-          title="إجمالي العيادات"
-          value={stats.clinicsCount}
-          icon={Building2}
+          title="إجمالي الأطباء"
+          value={stats.doctorsCount}
+          icon={Stethoscope}
           color="blue"
           trend="neutral"
-          trendValue="مسجلة"
+          trendValue="مسجل"
           delay={0}
         />
 
@@ -783,7 +784,7 @@ export const PlatformManagementSection: React.FC<PlatformManagementSectionProps>
 
       {/* Main Content Area */}
       <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-        {activeTab === 'users' && <UsersManager />}
+        {activeTab === 'users' && <PlatformUsersManager />}
         {activeTab === 'pending_requests' && <PendingRequestsManager />}
         {activeTab === 'activities' && <RecentActivitiesManager />}
         {activeTab === 'settings' && renderSettingsTab()}

@@ -32,42 +32,45 @@ const formatTime12h = (time: string) => {
 };
 
 const getLabStatusConfig = (s: string) => {
-    const map: any = {
-        pending: { label: 'طلب جديد', color: 'bg-blue-50 text-blue-700 border-blue-200' },
-        waiting_for_representative: { label: 'بانتظار المندوب', color: 'bg-orange-50 text-orange-700 border-orange-200' },
-        representative_dispatched: { label: 'تم إرسال المندوب', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
-        in_progress: { label: 'قيد العمل', color: 'bg-amber-50 text-amber-700 border-amber-200' },
-        completed: { label: 'مكتمل', color: 'bg-green-50 text-green-700 border-green-200' },
-        out_for_delivery: { label: 'جار التوصيل', color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
-        delivered: { label: 'تم التسليم', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-        returned: { label: 'مسترجع', color: 'bg-purple-50 text-purple-700 border-purple-200' },
-        rejected: { label: 'مرفوض', color: 'bg-red-50 text-red-700 border-red-200' },
-        cancelled: { label: 'ملغي', color: 'bg-rose-50 text-rose-700 border-rose-200' },
-        modification_requested: { label: 'طلب تعديل', color: 'bg-orange-50 text-orange-700 border-orange-200' }
-    };
-    return map[s] || { label: s, color: 'bg-gray-50 text-gray-600 border-gray-200' };
+  const map: any = {
+    pending: { label: 'طلب جديد', color: 'bg-blue-50 text-blue-700 border-blue-200' },
+    waiting_for_representative: { label: 'بانتظار المندوب', color: 'bg-orange-50 text-orange-700 border-orange-200' },
+    representative_dispatched: { label: 'تم إرسال المندوب', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+    in_progress: { label: 'قيد العمل', color: 'bg-amber-50 text-amber-700 border-amber-200' },
+    completed: { label: 'مكتمل', color: 'bg-green-50 text-green-700 border-green-200' },
+    out_for_delivery: { label: 'جار التوصيل', color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
+    delivered: { label: 'تم التسليم', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+    returned: { label: 'مسترجع', color: 'bg-purple-50 text-purple-700 border-purple-200' },
+    rejected: { label: 'مرفوض', color: 'bg-red-50 text-red-700 border-red-200' },
+    cancelled: { label: 'ملغي', color: 'bg-rose-50 text-rose-700 border-rose-200' },
+    modification_requested: { label: 'طلب تعديل', color: 'bg-orange-50 text-orange-700 border-orange-200' }
+  };
+  return map[s] || { label: s, color: 'bg-gray-50 text-gray-600 border-gray-200' };
 };
 
 const getStoreStatusConfig = (s: string) => {
-    const map: any = {
-        pending: { label: 'معلق', color: 'bg-yellow-50 text-yellow-700 border-yellow-200' },
-        processing: { label: 'قيد التجهيز', color: 'bg-amber-50 text-amber-700 border-amber-200' },
-        shipped: { label: 'تم الشحن', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
-        delivered: { label: 'تم التسليم', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-        cancelled: { label: 'ملغي', color: 'bg-rose-50 text-rose-700 border-rose-200' },
-        returned: { label: 'مسترجع', color: 'bg-purple-50 text-purple-700 border-purple-200' },
-        return_requested: { label: 'طلب إرجاع', color: 'bg-orange-50 text-orange-700 border-orange-200' }
-    };
-    return map[s] || { label: s, color: 'bg-gray-50 text-gray-600 border-gray-200' };
+  const map: any = {
+    pending: { label: 'معلق', color: 'bg-yellow-50 text-yellow-700 border-yellow-200' },
+    processing: { label: 'قيد التجهيز', color: 'bg-amber-50 text-amber-700 border-amber-200' },
+    shipped: { label: 'تم الشحن', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+    delivered: { label: 'تم التسليم', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+    cancelled: { label: 'ملغي', color: 'bg-rose-50 text-rose-700 border-rose-200' },
+    returned: { label: 'مسترجع', color: 'bg-purple-50 text-purple-700 border-purple-200' },
+    return_requested: { label: 'طلب إرجاع', color: 'bg-orange-50 text-orange-700 border-orange-200' }
+  };
+  return map[s] || { label: s, color: 'bg-gray-50 text-gray-600 border-gray-200' };
 };
 
 export const DoctorNotificationsPage: React.FC = () => {
   const navigate = useNavigate();
   const { isMultiClinicOwner, user } = useAuth();
   const { notifications, updates, markAsRead, deleteNotification, loading } = useNotifications();
-  const { selectedClinicId } = useDoctorContext();
-  const { appointments } = useAppointments(selectedClinicId);
-  const { orders: labOrders } = useLabOrders({ clinicId: selectedClinicId });
+  const { selectedClinicId, clinics, loading: clinicsLoading } = useDoctorContext();
+  // Guard: if user has no clinics, don't fetch clinic-specific data
+  const hasNoClinics = !clinicsLoading && clinics.length === 0;
+  const appointmentClinicId = hasNoClinics ? undefined : selectedClinicId;
+  const { appointments } = useAppointments(appointmentClinicId);
+  const { orders: labOrders } = useLabOrders({ clinicId: hasNoClinics ? undefined : selectedClinicId });
   const { orders: storeOrders } = useStoreOrders();
   const [activeTab, setActiveTab] = useState<FilterCategory>('all');
 
@@ -76,6 +79,24 @@ export const DoctorNotificationsPage: React.FC = () => {
     if (!clinicId) return '';
     const clinic = clinicsData.find(c => c.id === clinicId);
     return clinic?.name || '';
+  };
+
+  // Helper to check if item belongs to selected context
+  const isRelevant = (clinicId?: string | number) => {
+    const isStaff = user?.role === 'staff';
+
+    // Staff Logic: Only show data for the first assigned clinic
+    if (isStaff) {
+      return clinics.length > 0 && clinicId?.toString() === clinics[0].id.toString();
+    }
+
+    // Owner Logic: Respect Selected Clinic ID
+    if (!clinicId) return true; // Show global/system items
+    if (selectedClinicId === 'all') {
+      // Only show if the clinic actually belongs to the user
+      return clinics.some(c => c.id.toString() === clinicId.toString());
+    }
+    return selectedClinicId.toString() === clinicId.toString();
   };
 
   // Logic to categorize notifications
@@ -144,10 +165,10 @@ export const DoctorNotificationsPage: React.FC = () => {
         title: isOnline ? 'موعد جديد (أونلاين)' : 'موعد جديد',
         description: description,
         metadata: {
-            patientName: a.patientName,
-            doctorName: a.doctorName && a.doctorName !== 'غير محدد' ? a.doctorName : undefined,
-            date: a.date,
-            time: formatTime12h(a.time),
+          patientName: a.patientName,
+          doctorName: a.doctorName && a.doctorName !== 'غير محدد' ? a.doctorName : undefined,
+          date: a.date,
+          time: formatTime12h(a.time),
         },
         time: a.createdAt || new Date().toISOString(),
         priority: a.priority || 'normal',
@@ -185,7 +206,7 @@ export const DoctorNotificationsPage: React.FC = () => {
       clinicId: o.clinic_id,
       type: 'order' as any,
       title: 'طلب مختبر',
-      description: '', 
+      description: '',
       metadata: {
         orderType: 'lab',
         targetName: o.lab_name || o.custom_lab_name || 'مختبر خارجي',
@@ -221,7 +242,7 @@ export const DoctorNotificationsPage: React.FC = () => {
       },
       time: o.createdAt || new Date().toISOString(),
       priority: 'normal',
-      isRead: o.status === 'delivered', 
+      isRead: o.status === 'delivered',
       createdAt: o.createdAt || new Date().toISOString(),
       displayCategory: 'order' as FilterCategory,
       displayIcon: <Package className="w-6 h-6" />,
@@ -231,12 +252,13 @@ export const DoctorNotificationsPage: React.FC = () => {
 
     // Combine and Sort by Date Descending
     return [...mappedNotifications, ...mappedAppointments, ...mappedLabOrders, ...mappedStoreOrders, ...mappedUpdates]
+      .filter(n => isRelevant(n.clinicId)) // Filter by selected clinic context
       .filter(n => n.displayCategory !== 'inventory') // Strictly Remove inventory items
       .sort((a, b) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
 
-  }, [notifications, updates, appointments, labOrders, storeOrders, user]);
+  }, [notifications, updates, appointments, labOrders, storeOrders, user, clinics, selectedClinicId]);
 
   // Filtering Logic
   const filteredList = useMemo(() => {
@@ -284,9 +306,9 @@ export const DoctorNotificationsPage: React.FC = () => {
       case 'order':
         // Navigate to clinic labs/orders page if lab, or store orders if store
         if (n.metadata?.orderType === 'lab') {
-           navigate(`/doctor/clinic/${targetClinicId}?tab=labs`);
+          navigate(`/doctor/clinic/${targetClinicId}?tab=labs`);
         } else {
-           navigate('/store/orders');
+          navigate('/store/orders');
         }
         break;
       case 'system':
@@ -415,22 +437,22 @@ export const DoctorNotificationsPage: React.FC = () => {
                           </div>
                         )}
                         {notification.displayCategory === 'order' && notification.metadata?.statusInfo && (
-                           <div className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border font-medium ${notification.metadata.statusInfo.color}`}>
-                             <span>{notification.metadata.statusInfo.label}</span>
-                           </div>
+                          <div className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border font-medium ${notification.metadata.statusInfo.color}`}>
+                            <span>{notification.metadata.statusInfo.label}</span>
+                          </div>
                         )}
                         {!notification.isRead && (
                           <span className="w-2 h-2 rounded-full bg-blue-500" />
                         )}
                       </div>
-                        {notification.displayCategory === 'appointment' && notification.metadata ? (
+                      {notification.displayCategory === 'appointment' && notification.metadata ? (
                         <div className="text-sm text-gray-600 mt-1 w-full">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="text-gray-500 text-xs flex-shrink-0">👤 المريض:</span>
                             <span className="font-semibold text-gray-800 bg-white/80 px-1.5 py-0.5 rounded border border-gray-100/30">
                               {notification.metadata.patientName}
                             </span>
-                            
+
                             {notification.metadata.doctorName && (
                               <>
                                 <span className="text-gray-300 text-xs">|</span>
@@ -446,12 +468,12 @@ export const DoctorNotificationsPage: React.FC = () => {
                         <div className="text-sm text-gray-600 mt-1 w-full">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="text-gray-500 text-[10px] flex-shrink-0">
-                                {notification.metadata.orderType === 'lab' ? 'المختبر:' : 'المورد:'}
+                              {notification.metadata.orderType === 'lab' ? 'المختبر:' : 'المورد:'}
                             </span>
                             <span className="font-semibold text-gray-800 bg-white/80 px-1.5 py-0.5 rounded border border-gray-100/30">
                               {notification.metadata.targetName}
                             </span>
-                            
+
                             {notification.metadata.staffName && (
                               <>
                                 <span className="text-gray-300 text-xs">|</span>
@@ -461,7 +483,7 @@ export const DoctorNotificationsPage: React.FC = () => {
                                 </span>
                               </>
                             )}
-                            
+
                             {/* For Lab Orders Show Patient Info */}
                             {notification.metadata.orderType === 'lab' && notification.metadata.patientName && (
                               <>

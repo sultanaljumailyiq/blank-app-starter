@@ -11,6 +11,7 @@ export interface PlatformStats {
     monthlyRevenue: number;
     growth: number;
     doctorsCount: number;
+    newUsersThisMonth: number;
 }
 
 export interface PlatformSettings {
@@ -62,7 +63,8 @@ export const useAdminData = () => {
         pendingRequests: 0,
         monthlyRevenue: 0,
         growth: 0,
-        doctorsCount: 0
+        doctorsCount: 0,
+        newUsersThisMonth: 0
     });
 
     const [settings, setSettings] = useState<PlatformSettings>({
@@ -105,19 +107,71 @@ export const useAdminData = () => {
 
             const totalPending = (pendingSuppliers || 0) + (pendingLabs || 0) + (pendingSubs || 0) + (pendingLabRequests || 0);
 
-            // 3. Revenue (This month)
-            const now = new Date();
-            const start = startOfMonth(now).toISOString();
-            const end = endOfMonth(now).toISOString();
+            // 3. Revenue (this month only)
+            const monthStart = startOfMonth(new Date()).toISOString();
+            const monthEnd = endOfMonth(new Date()).toISOString();
 
-            const { data: revenueData } = await supabase
+            // Doctors Subscriptions - this month's approved requests
+            const { data: subsData } = await supabase
                 .from('subscription_requests')
-                .select('plan_id(price)')
+                .select('amount_paid, plan_id, plan:subscription_plans(price)')
                 .eq('status', 'approved')
-                .gte('updated_at', start)
-                .lte('updated_at', end);
+                .gte('created_at', monthStart)
+                .lte('created_at', monthEnd);
 
-            const revenue = revenueData?.reduce((acc: number, curr: any) => acc + (curr.plan_id?.price || 0), 0) || 0;
+            const docsRevenue = (subsData || []).reduce((acc: number, curr: any) => {
+                // amount_paid is the real payment, always prefer it
+                const paid = Number(curr.amount_paid) || 0;
+                if (paid > 0) return acc + paid;
+                // Fallback: use plan's monthly price (price is JSONB {monthly, yearly, ...})
+                const planPrice = curr.plan?.price;
+                const monthly = typeof planPrice === 'object' && planPrice !== null
+                    ? Number(planPrice.monthly) || 0
+                    : Number(planPrice) || 0;
+                return acc + monthly;
+            }, 0);
+
+            // Suppliers Settled Commissions - this month
+            const { data: allSuppliers } = await supabase.from('suppliers').select('id, user_id, commission_percentage');
+            const { data: storeOrders } = await supabase
+                .from('store_orders')
+                .select('supplier_id, total_amount')
+                .eq('status', 'delivered')
+                .eq('is_settled', true)
+                .gte('created_at', monthStart)
+                .lte('created_at', monthEnd);
+            
+            const supplierRev = (storeOrders || []).reduce((acc: number, order: any) => {
+                const s = allSuppliers?.find(sup => sup.id === order.supplier_id || sup.user_id === order.supplier_id);
+                const pct = Number(s?.commission_percentage) || 0;
+                return acc + ((Number(order.total_amount) || 0) * pct / 100);
+            }, 0);
+
+            // Labs Settled Commissions - completed OR delivered this month
+            const { data: allLabs } = await supabase.from('dental_laboratories').select('id, user_id, commission_percentage');
+            const { data: labOrders } = await supabase
+                .from('dental_lab_orders')
+                .select('laboratory_id, final_amount, price')
+                .in('status', ['completed', 'delivered'])
+                .eq('is_settled', true)
+                .gte('created_at', monthStart)
+                .lte('created_at', monthEnd);
+            
+            const labRev = (labOrders || []).reduce((acc: number, order: any) => {
+                const l = allLabs?.find(lab => lab.id === order.laboratory_id || lab.user_id === order.laboratory_id);
+                const pct = Number(l?.commission_percentage) || 0;
+                const amount = Number(order.final_amount) || Number(order.price) || 0;
+                return acc + (amount * pct / 100);
+            }, 0);
+
+            const totalRevenue = docsRevenue + supplierRev + labRev;
+
+            // 4. New users this month (reuse monthStart/monthEnd from above)
+            const { count: newUsers } = await supabase
+                .from('profiles')
+                .select('*', { count: 'exact', head: true })
+                .gte('created_at', monthStart)
+                .lte('created_at', monthEnd);
 
             setStats({
                 clinicsCount: clinics || 0,
@@ -125,9 +179,10 @@ export const useAdminData = () => {
                 labsCount: labs || 0,
                 patientsCount: patients || 0,
                 pendingRequests: totalPending,
-                monthlyRevenue: revenue,
+                monthlyRevenue: totalRevenue,
                 growth: 12.5,
-                doctorsCount: doctors || 0
+                doctorsCount: doctors || 0,
+                newUsersThisMonth: newUsers || 0
             });
 
         } catch (error) {

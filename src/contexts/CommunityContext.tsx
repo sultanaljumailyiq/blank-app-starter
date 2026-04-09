@@ -190,7 +190,6 @@ export const CommunityProvider: React.FC<{ children: ReactNode }> = ({ children 
                 const userId = session?.user?.id || 'mock-user-id';
                 setCurrentUser(session?.user);
 
-                // Fetch Core Tables in Parallel
                 const [
                     { data: postsData },
                     { data: profilesData },
@@ -199,14 +198,14 @@ export const CommunityProvider: React.FC<{ children: ReactNode }> = ({ children 
                     { data: commentsData },
                     { data: savedData },
                     { data: friendshipsData },
-                    { data: modelsData },
+                    { data: followsData },        // Corrected order
+                    { data: modelsData },         // Mapped to models
                     { data: enrollmentsData },
                     { data: notificationsData },
                     { data: groupRequestsData },
-                    { data: myGroupMemberships }, // Added
-                    { data: resourcesData }, // Added Resources
-                    { data: myLikesData }, // Newly Added
-                    { data: followsData } // Add follows data
+                    { data: myGroupMemberships },
+                    { data: resourcesData },
+                    { data: myLikesData }
                 ] = await Promise.all([
                     supabase.from('community_posts').select('*').order('created_at', { ascending: false }),
                     supabase.from('profiles').select('*'),
@@ -214,14 +213,13 @@ export const CommunityProvider: React.FC<{ children: ReactNode }> = ({ children 
                     supabase.from('courses').select('*'),
                     supabase.from('community_comments').select('*'),
                     supabase.from('saved_items').select('*').eq('user_id', userId),
-                    supabase.from('friendships').select('*'), // Deprecated
-                    supabase.from('follows').select('*').or(`follower_id.eq.${userId},following_id.eq.${userId}`), // Fetch my follows/followers
-                    supabase.from('models').select('*'),
+                    supabase.from('friendships').select('*'),
+                    supabase.from('follows').select('*').or(`follower_id.eq.${userId},following_id.eq.${userId}`),
+                    supabase.from('models').select('*').order('created_at', { ascending: false }), // Properly ordered
                     supabase.from('enrollments').select('*').eq('user_id', userId),
                     supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
-                    supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
                     supabase.from('group_requests').select('*, profiles:user_id(full_name, avatar_url)').eq('status', 'pending'),
-                    supabase.from('group_members').select('group_id').eq('user_id', userId), // Fetch my group memberships
+                    supabase.from('group_members').select('group_id').eq('user_id', userId),
                     supabase.from('scientific_resources').select('*').order('created_at', { ascending: false }),
                     supabase.from('community_likes').select('post_id').eq('user_id', userId)
                 ]);

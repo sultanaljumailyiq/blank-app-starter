@@ -57,27 +57,85 @@ export const useAdminSubscriptions = () => {
 
             const { data: requestsData, error: requestsError } = await supabase
                 .from('subscription_requests')
-                .select('*, doctor:profiles!doctor_id(full_name, phone, email, avatar_url)') // Join with profiles
+                .select(`
+                    *,
+                    doctor_profile:profiles!doctor_id(full_name, phone, email, avatar_url)
+                `)
                 .order('created_at', { ascending: false });
 
-            if (requestsError) throw requestsError;
+            // If the join fails, fallback to manual fetch
+            let requestsWithDoctors = requestsData || [];
+            if (requestsError) {
+                console.warn('Join with doctor_id failed, trying user_id join:', requestsError);
+                const { data: fallbackData, error: fallbackError } = await supabase
+                    .from('subscription_requests')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+                if (fallbackError) throw fallbackError;
+                requestsWithDoctors = fallbackData || [];
+            }
+
+            const { data: paymentMethodsData } = await supabase
+                .from('payment_methods')
+                .select('id, name');
 
             // Map Requests
-            const mappedRequests: any[] = (requestsData || []).map(r => ({
-                id: r.id,
-                doctorName: r.doctor?.full_name || r.doctor_name || 'Unknown',
-                clinicName: r.clinic_name || 'Unknown',
-                phone: r.doctor?.phone || r.phone || '',
-                email: r.doctor?.email || r.email || '',
-                avatar_url: r.doctor?.avatar_url || undefined,
-                status: r.status,
-                requestedPlan: mappedPlans.find(p => p.id === r.plan_id)?.name || 'Unknown Plan',
-                paymentMethod: r.payment_method,
-                submittedDate: r.created_at,
-                user_id: r.user_id || r.doctor_id,
-                receiptImageUrl: r.receipt_image_url || r.payment_details?.receiptUrl,
-                paymentDetails: r.payment_details || {}
-            }));
+            const mappedRequests: any[] = (requestsWithDoctors).map((r: any) => {
+                // Payment method: prefer raw stored value, lookup name only if it's a UUID
+                let paymentMethodName = r.payment_method || '';
+                const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(paymentMethodName);
+                if (isUUID) {
+                    const foundMethod = paymentMethodsData?.find((pm: any) => pm.id === paymentMethodName);
+                    if (foundMethod) paymentMethodName = foundMethod.name;
+                }
+
+                const plan = mappedPlans.find(p => p.id === r.plan_id);
+                const billingPeriod = r.payment_details?.billing_period || plan?.duration || 'monthly';
+                
+                // Calculate endDate based on billing_period
+                const createdDate = new Date(r.created_at);
+                const endDate = new Date(createdDate);
+                if (billingPeriod === 'yearly') {
+                    endDate.setFullYear(endDate.getFullYear() + 1);
+                } else if (billingPeriod === 'semi_annual') {
+                    endDate.setMonth(endDate.getMonth() + 6);
+                } else {
+                    endDate.setMonth(endDate.getMonth() + 1);
+                }
+                
+                const isExpired = new Date() > endDate;
+                let finalStatus = r.status;
+                if (r.status === 'approved' && isExpired) {
+                    finalStatus = 'expired';
+                }
+
+                // Doctor info: from join, then from snapshot columns, then 'غير محدد'
+                const doctorProfile = r.doctor_profile || r.doctor || null;
+                const doctorName = doctorProfile?.full_name || r.doctor_name || (r.notes ? undefined : undefined) || 'غير محدد';
+                const phone = doctorProfile?.phone || r.phone || '';
+                const email = doctorProfile?.email || r.email || '';
+
+                return {
+                    id: r.id,
+                    doctorName,
+                    clinicName: r.clinic_name || 'غير محدد',
+                    phone,
+                    email,
+                    avatar_url: doctorProfile?.avatar_url || undefined,
+                    status: finalStatus,
+                    requestedPlan: plan?.name || r.plan_name || 'غير محدد',
+                    billingPeriod, // Include duration info
+                    paymentMethod: paymentMethodName,
+                    amountPaid: r.amount_paid || 0,
+                    discount: r.payment_details?.discount_applied || r.payment_details?.discountApplied || r.discount || 0,
+                    submittedDate: r.created_at,
+                    endDate: endDate.toISOString(),
+                    user_id: r.user_id || r.doctor_id,
+                    doctor_id: r.doctor_id,
+                    receiptImageUrl: r.receipt_image_url || r.payment_details?.receiptUrl,
+                    paymentDetails: r.payment_details || {}
+                };
+            });
 
             const { data: couponsData, error: couponsError } = await supabase
                 .from('coupons')
@@ -86,18 +144,27 @@ export const useAdminSubscriptions = () => {
 
             if (couponsError) throw couponsError;
 
-            const mappedCoupons = (couponsData || []).map(c => ({
-                id: c.id,
-                code: c.code,
-                name: c.name || '', // Ensure name is mapped
-                type: c.discount_type,
-                value: c.discount_value,
-                usageLimit: c.usage_limit,
-                usedCount: c.used_count || 0,
-                startDate: c.start_date,
-                endDate: c.end_date,
-                isActive: c.is_active
-            }));
+            const mappedCoupons = (couponsData || []).map(c => {
+                // Manually calculate usage from existing requests to ensure precision
+                const count = mappedRequests.filter(r => 
+                    r.paymentDetails?.coupon_code === c.code || 
+                    r.paymentDetails?.couponCode === c.code ||
+                    r.paymentDetails?.discount_code === c.code
+                ).length;
+
+                return {
+                    id: c.id,
+                    code: c.code,
+                    name: c.name || '',
+                    type: c.discount_type,
+                    value: c.discount_value,
+                    usageLimit: c.usage_limit,
+                    usedCount: count > 0 ? count : (c.used_count || 0), // Prefer calculated, fallback to DB
+                    startDate: c.start_date,
+                    endDate: c.end_date,
+                    isActive: c.is_active
+                };
+            });
 
             setPlans(mappedPlans);
             setRequests(mappedRequests);

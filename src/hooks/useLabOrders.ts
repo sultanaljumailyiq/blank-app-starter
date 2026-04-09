@@ -357,7 +357,12 @@ export const useLabOrders = (options?: { clinicId?: string, laboratoryId?: strin
 
     useEffect(() => {
         if (!user) return;
-
+        // Guard: if clinicId is explicitly undefined, don't fetch (caller has no clinic context)
+        if ('clinicId' in (options || {}) && options?.clinicId === undefined) {
+            setOrders([]);
+            setLoading(false);
+            return;
+        }
         fetchOrders();
 
         // Realtime Subscription

@@ -90,14 +90,24 @@ export const DoctorOverviewPage: React.FC = () => {
     const { user } = useAuth();
     // Use Global Context
     const { clinics, loading: clinicsLoading, selectedClinicId } = useDoctorContext();
-    const { appointments } = useAppointments(selectedClinicId); // Pass context ID
-    const { orders: labOrders } = useLabOrders({ clinicId: selectedClinicId });
+    // Guard: if no clinics, pass undefined to prevent fetching all data from DB
+    const hasNoClinics = !clinicsLoading && clinics.length === 0;
+    const appointmentClinicId = hasNoClinics ? undefined : selectedClinicId;
+    const { appointments } = useAppointments(appointmentClinicId); // Guard: undefined = no fetch
+    const { orders: labOrders } = useLabOrders({ clinicId: hasNoClinics ? undefined : selectedClinicId });
     const { orders: storeOrders } = useStoreOrders();
-    const { patients } = usePatients();
-
     // --- Logic & Filtering ---
     const isOwner = user?.role === 'doctor';
     const isStaff = user?.role === 'staff';
+
+    // Guard: if no clinics → pass empty array [] to usePatients (skips all fetching)
+    const allClinicIds = hasNoClinics ? [] : clinics.map(c => c.id.toString());
+    const { patients } = usePatients(
+        // For staff: single clinic. For owner with clinics: all clinic IDs. No clinics: empty array (no fetch).
+        isStaff ? clinics[0]?.id?.toString() : undefined,
+        isStaff ? undefined : allClinicIds
+    );
+
 
     // Helper to check if item belongs to selected context
     const isRelevant = (clinicId?: string | number) => {
@@ -108,7 +118,11 @@ export const DoctorOverviewPage: React.FC = () => {
 
         // Owner Logic: Respect Selected Clinic ID
         if (!clinicId) return true; // Show global/system items (no clinic ID)
-        return selectedClinicId === 'all' || selectedClinicId.toString() === clinicId.toString();
+        if (selectedClinicId === 'all') {
+            // Only show if the clinic actually belongs to the user
+            return clinics.some(c => c.id.toString() === clinicId.toString());
+        }
+        return selectedClinicId.toString() === clinicId.toString();
     };
 
     const getClinicName = (id?: string | number) => {
@@ -173,8 +187,13 @@ export const DoctorOverviewPage: React.FC = () => {
 
     // --- Filtering Logic ---
     // --- Filtering Logic ---
-    const filteredActivities = activities.filter(a => isRelevant(a.clinicId));
-    const filteredLowStock = lowStockItems.filter(item => isRelevant((item as any).clinicId));
+    // Guard: show nothing if user has no clinics yet
+    const filteredActivities = hasNoClinics
+        ? []
+        : activities.filter(a => isRelevant(a.clinicId));
+    const filteredLowStock = hasNoClinics
+        ? []
+        : lowStockItems.filter(item => isRelevant((item as any).clinicId));
 
     // 4b. Merge Updates into Notifications for Dashboard
     const { updates } = useNotifications();
@@ -193,7 +212,9 @@ export const DoctorOverviewPage: React.FC = () => {
         metadata: undefined as any
     }));
 
-    const mappedNotifications = allNotifications
+    const mappedNotifications = hasNoClinics
+        ? []
+        : allNotifications
         .filter(n => isRelevant(n.clinicId) && n.type !== 'order_update' && !n.title.includes('طلبك') && !n.title.includes('تحديث حالة الطلب'))
         .map(n => {
             let Icon = Bell;
@@ -204,7 +225,7 @@ export const DoctorOverviewPage: React.FC = () => {
             if (n.type === 'message') { Icon = MessageCircle; color = 'green'; }
 
             // Logic to show clinic name if available
-            const clinicName = n.clinicName || clinics.find(c => c.id === n.clinicId)?.name || 'عيادة عامة';
+            const clinicName = n.clinicName || clinics.find(c => c.id.toString() === n.clinicId?.toString())?.name || 'إشعار عام';
 
             return {
                 id: n.id,
@@ -240,7 +261,7 @@ export const DoctorOverviewPage: React.FC = () => {
             icon: Icon,
             color: 'blue' as const,
             clinicId: a.clinicId,
-            clinicName: clinics.find(c => c.id === a.clinicId)?.name || 'عيادة عامة',
+            clinicName: clinics.find(c => c.id.toString() === a.clinicId?.toString())?.name || 'إشعار عام',
             createdAt: a.createdAt || new Date().toISOString()
         };
     });
@@ -286,8 +307,10 @@ export const DoctorOverviewPage: React.FC = () => {
         createdAt: o.createdAt || new Date().toISOString()
     }));
 
-    // Combine and Sort
-    const recentNotifications = [...mappedNotifications, ...mappedAppointments, ...mappedLabOrders, ...mappedStoreOrders, ...mappedUpdates]
+    // Combine and Sort — Guard: only show data when user has clinics
+    const recentNotifications = hasNoClinics
+        ? []
+        : [...mappedNotifications, ...mappedAppointments, ...mappedLabOrders, ...mappedStoreOrders, ...mappedUpdates]
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         .slice(0, 5);
 

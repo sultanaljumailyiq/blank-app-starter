@@ -39,82 +39,73 @@ export function useAdminLabs() {
             setLoading(true);
             setError(null);
 
-            let query = supabase
-                .from('dental_laboratories')
-                .select('*');
+            // Fetch all lab profiles
+            const { data: profilesData, error: profilesError } = await supabase
+                .from('profiles')
+                .select('id, full_name, phone, email, avatar_url, created_at')
+                .in('role', ['lab', 'laboratory']);
 
-            if (statusFilter !== 'all') {
-                // query = query.eq('account_status', statusFilter); // If column exists
-            }
+            if (profilesError) throw profilesError;
 
-            const { data, error } = await query;
+            if (profilesData) {
+                const userIds = profilesData.map((p: any) => p.id);
 
-            if (error) throw error;
+                // Fetch real dental_laboratories and orders
+                const [labsRes, ordersRes] = await Promise.all([
+                   supabase.from('dental_laboratories').select('*').in('user_id', userIds),
+                   supabase.from('dental_lab_orders').select('id, laboratory_id, final_amount, price, status, is_settled').eq('status', 'completed')
+                ]);
 
-            if (data) {
-                // Fetch owner profiles in parallel to avoid Join issues
-                const userIds = data.map((l: any) => l.user_id).filter(id => id); // Filter nulls
+                const labsData = labsRes.data || [];
+                const ordersData = ordersRes.data || [];
 
-                let profileMap: Record<string, { full_name: string; phone: string; email: string; avatar_url: string }> = {};
-                if (userIds.length > 0) {
-                    const { data: profilesData } = await supabase
-                        .from('profiles')
-                        .select('id, full_name, phone, email, avatar_url')
-                        .in('id', userIds);
+                const mappedLabs: Laboratory[] = profilesData.map((profile: any) => {
+                    const labRecord = labsData.find((l: any) => l.user_id === profile.id || l.owner_id === profile.id);
+                    const labId = labRecord ? labRecord.id : profile.id; // Use profile id as fallback id
+                    
+                    // Computing manual revenue statistics
+                    const commissionPercentage = labRecord?.commission_percentage || 5;
+                    const labOrders = ordersData.filter((o: any) => o.laboratory_id === labId);
+                    
+                    const settledSales = labOrders.filter(o => o.is_settled).reduce((sum, o) => sum + (o.final_amount || o.price || 0), 0);
+                    const unsettledSales = labOrders.filter(o => !o.is_settled).reduce((sum, o) => sum + (o.final_amount || o.price || 0), 0);
+                    
+                    const computedTotalRevenue = (settledSales * commissionPercentage) / 100;
+                    const computedPendingFees = (unsettledSales * commissionPercentage) / 100;
 
-                    if (profilesData) {
-                        profilesData.forEach((p: any) => {
-                            profileMap[p.id] = {
-                                full_name: p.full_name || 'مدير المختبر',
-                                phone: p.phone || 'N/A',
-                                email: p.email || 'N/A',
-                                avatar_url: p.avatar_url
-                            };
-                        });
-                    }
-                }
-
-                const mappedLabs: Laboratory[] = data.map((lab: any) => {
-                    const owner = profileMap[lab.user_id];
                     return {
-                        id: lab.id,
-                        name: lab.name || 'مختبر',
-                        ownerName: owner?.full_name || 'مدير المختبر',
-                        address: lab.address || 'العنوان غير متوفر',
-                        phone: owner?.phone || lab.phone || 'N/A',
-                        email: owner?.email || lab.email || 'N/A',
-                        governorate: lab.governorate || 'بغداد',
-                        status: lab.account_status || 'pending',
-                        commissionPercentage: lab.commission_percentage || 5, // Default 5%
-                        totalRevenue: 0, // Need to join with orders or view
-                        pendingCommission: lab.pending_commission || 0,
-                        rating: lab.rating || 5,
-                        reviewCount: 0,
-                        joinDate: lab.created_at,
+                        id: labId,
+                        name: labRecord?.name || labRecord?.lab_name || profile.full_name || 'مختبر جديد',
+                        ownerName: profile.full_name || 'مدير المختبر',
+                        address: labRecord?.address || 'العنوان غير متوفر',
+                        phone: labRecord?.phone || profile.phone || 'N/A',
+                        email: profile.email || 'N/A',
+                        governorate: labRecord?.governorate || 'غير محدد',
+                        status: labRecord?.account_status || 'pending', // Usually pending if not explicitly active
+                        commissionPercentage,
+                        totalRevenue: computedTotalRevenue,
+                        pendingCommission: computedPendingFees,
+                        rating: labRecord?.rating || 0,
+                        reviewCount: labRecord?.review_count || 0,
+                        joinDate: labRecord?.created_at || profile.created_at,
                         labType: 'cooperative',
-                        isActive: lab.account_status === 'active',
+                        isActive: labRecord?.account_status === 'active',
                         totalRequests: 0,
-                        isVerified: lab.is_verified || false,
-                        isAccredited: lab.is_accredited || false,
-                        logo: lab.logo_url || owner?.avatar_url || undefined
+                        isVerified: labRecord?.is_verified || false,
+                        isAccredited: labRecord?.is_accredited || false,
+                        logo: labRecord?.logo_url || profile.avatar_url || undefined,
+                        userId: profile.id
                     };
                 });
 
-                // Fetch stats from Admin View if possible or specific query
-                const { data: statsData } = await supabase.from('admin_lab_performance_view').select('lab_id, total_revenue, pending_fees');
-
-                const labsWithStats = mappedLabs.map(l => {
-                    const stats = statsData?.find((s: any) => s.lab_id === l.id);
-                    return {
-                        ...l,
-                        totalRevenue: stats ? stats.total_revenue : 0,
-                        pendingCommission: stats ? stats.pending_fees : l.pendingCommission
-                    };
-                });
-
-                const filtered = labsWithStats.filter(l =>
-                    l.name.toLowerCase().includes(searchTerm.toLowerCase())
+                let filtered = mappedLabs.filter(l =>
+                    l.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                    l.ownerName.toLowerCase().includes(searchTerm.toLowerCase())
                 );
+                
+                if(statusFilter !== 'all') {
+                  filtered = filtered.filter(l => l.status === statusFilter);
+                }
 
                 setLabs(filtered);
             }
@@ -149,13 +140,29 @@ export function useAdminLabs() {
 
     const updateLabStatus = async (labId: string, status: 'active' | 'suspended', reason?: string) => {
         try {
+            // First ensure it exists using the mapped lab's user_id or id
+            let actualLabId = labId;
+            const { data: existing } = await supabase.from('dental_laboratories').select('id').eq('id', labId).maybeSingle();
+            
+            if (!existing) {
+                // Try from user_id if labId was passed as profile ID
+                const { data: byUser } = await supabase.from('dental_laboratories').select('id').eq('user_id', labId).maybeSingle();
+                if(byUser) actualLabId = byUser.id;
+                else {
+                    const lab = labs.find(l => l.id === labId);
+                    const { data: newLab, error: insErr } = await supabase.from('dental_laboratories').insert({ user_id: labId, name: lab?.name || 'مختبر جديد' }).select('id').single();
+                    if (insErr) throw insErr;
+                    actualLabId = newLab.id;
+                }
+            }
+
             const { error } = await supabase
                 .from('dental_laboratories')
                 .update({
                     account_status: status,
                     suspension_reason: reason || null
                 })
-                .eq('id', labId);
+                .eq('id', actualLabId);
 
             if (error) throw error;
 
@@ -169,10 +176,24 @@ export function useAdminLabs() {
 
     const verifyLab = async (labId: string, isVerified: boolean) => {
         try {
+            // First ensure it exists 
+            let actualLabId = labId;
+            const { data: existing } = await supabase.from('dental_laboratories').select('id').eq('id', labId).maybeSingle();
+            if (!existing) {
+                const { data: byUser } = await supabase.from('dental_laboratories').select('id').eq('user_id', labId).maybeSingle();
+                if(byUser) actualLabId = byUser.id;
+                else {
+                    const lab = labs.find(l => l.id === labId);
+                    const { data: newLab, error: insErr } = await supabase.from('dental_laboratories').insert({ user_id: labId, name: lab?.name || 'مختبر جديد' }).select('id').single();
+                    if (insErr) throw insErr;
+                    actualLabId = newLab.id;
+                }
+            }
+
             const { error } = await supabase
                 .from('dental_laboratories')
                 .update({ is_verified: isVerified })
-                .eq('id', labId);
+                .eq('id', actualLabId);
 
             if (error) throw error;
 
@@ -184,31 +205,41 @@ export function useAdminLabs() {
         }
     };
 
-    const clearCommission = async (labId: string) => {
+    const clearCommission = async (labId: string, amount: number) => {
         try {
+            if (amount <= 0) return false;
+
             const lab = labs.find(l => l.id === labId);
-            if (!lab || lab.pendingCommission <= 0) return false;
 
             // 1. Record the Transaction
-            const { error: txError } = await supabase.from('financial_transactions').insert({
-                lab_id: labId,
-                amount: lab.pendingCommission,
-                type: 'settlement',
-                category: 'commission_clearance',
-                status: 'completed',
-                transaction_date: new Date().toISOString(),
-                description: `Commission Payout for ${lab.name}`
-            });
+            const { data: newTx, error: txErr } = await supabase
+                .from('financial_transactions')
+                .insert({
+                    amount: amount,
+                    type: 'expense',
+                    category: 'commission_clearance',
+                    status: 'completed',
+                    transaction_date: new Date().toISOString(),
+                    description: `Commission Payout for ${lab?.name || 'Laboratory'}`
+                })
+                .select('id')
+                .single();
 
-            if (txError) throw txError;
+            if (txErr) throw txErr;
+
+            await supabase.from('dental_lab_orders')
+                .update({ is_settled: true, settlement_id: newTx?.id })
+                .eq('laboratory_id', labId)
+                .eq('status', 'completed')
+                .eq('is_settled', false);
 
             // 2. Clear Pending Commission
-            const { error } = await supabase
+            const { error: labErr } = await supabase
                 .from('dental_laboratories')
                 .update({ pending_commission: 0 })
                 .eq('id', labId);
 
-            if (error) throw error;
+            if (labErr) throw labErr;
 
             // 3. Update Local State
             setLabs(prev => prev.map(l => l.id === labId ? { ...l, pendingCommission: 0 } : l));

@@ -143,9 +143,9 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({ onNavigate }) 
         />
 
         <BentoStatCard
-          title="إجمالي الإيرادات"
-          value={`${(stats.monthlyRevenue / 1000000).toFixed(1)}م`}
-          icon={DollarSign}
+          title="مستخدمون جدد هذا الشهر"
+          value={stats.newUsersThisMonth}
+          icon={UserCheck}
           color="orange"
           trend="up"
           trendValue={`${stats.growth}%`}

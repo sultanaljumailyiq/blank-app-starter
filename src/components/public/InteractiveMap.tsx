@@ -1,11 +1,13 @@
-import React, { useRef, useState } from 'react';
-import { MapPin, ChevronLeft, ChevronRight, Star, Phone } from 'lucide-react';
+import React, { useRef, useState, useEffect } from 'react';
+import { MapPin, ChevronLeft, ChevronRight, Star, Phone, Navigation, CheckCircle, RefreshCw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { GoogleMap, Marker, InfoWindow, useJsApiLoader } from '@react-google-maps/api';
 import { ClinicCard } from '../cards/ClinicCard';
 import { usePublicClinics } from '../../hooks/usePublicClinics';
 import { addOnlineRequest } from '../../data/mock/assets';
 import { Clinic } from '../../types';
+import { Button } from '../common/Button';
+import { useGeolocation } from '../../hooks/useGeolocation';
 
 const mapContainerStyle = {
   width: '100%',
@@ -13,9 +15,9 @@ const mapContainerStyle = {
   borderRadius: '24px',
 };
 
-const baghdadCenter = {
-  lat: 33.3128,
-  lng: 44.3615,
+const iraqCenter = {
+  lat: 33.3152,
+  lng: 44.3661,
 };
 
 const mapOptions = {
@@ -37,14 +39,30 @@ interface InteractiveMapProps {
   clinics: Clinic[];
   height?: string;
   userLocation?: { lat: number; lng: number } | null;
+  center?: { lat: number; lng: number };
+  zoom?: number;
 }
 
-export const InteractiveMap: React.FC<InteractiveMapProps> = ({ clinics, height = '400px', userLocation }) => {
+export const InteractiveMap: React.FC<InteractiveMapProps> = ({ 
+  clinics: initialClinics, 
+  height = '400px', 
+  userLocation: initialUserLocation,
+  center: initialCenter = iraqCenter,
+  zoom: initialZoom = 6
+}) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
   const [selectedClinic, setSelectedClinic] = useState<Clinic | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
+
+  // Map state
+  const [mapCenter, setMapCenter] = useState(initialCenter);
+  const [mapZoom, setMapZoom] = useState(initialZoom);
+  const [displayedClinics, setDisplayedClinics] = useState(initialClinics);
+
+  // Geolocation
+  const { location, getLocation, clearLocation, calculateDistance, loading: geoLoading, error: geoError } = useGeolocation();
 
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
@@ -52,6 +70,31 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({ clinics, height 
     language: 'ar',
     libraries: ['places'],
   });
+
+  // Handle "Locate Me"
+  const handleLocateMe = () => {
+    getLocation();
+  };
+
+  // Update map and filter when location changes
+  useEffect(() => {
+    if (location) {
+      setMapCenter(location);
+      setMapZoom(12);
+
+      // Filter clinics by 200km radius
+      const nearby = initialClinics.filter(clinic => {
+        const dist = calculateDistance(
+          location,
+          { lat: clinic.location.lat, lng: clinic.location.lng }
+        );
+        return dist <= 200;
+      });
+      setDisplayedClinics(nearby);
+    } else {
+      setDisplayedClinics(initialClinics);
+    }
+  }, [location, initialClinics]);
 
   const handleScroll = () => {
     if (scrollContainerRef.current) {
@@ -71,7 +114,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({ clinics, height 
       scrollContainerRef.current.scrollTo({
         left: newScrollLeft,
         behavior: 'smooth',
-      });
+        });
     }
   };
 
@@ -99,13 +142,48 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({ clinics, height 
           <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
             اكتشف أفضل العيادات
           </h2>
-          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+          <p className="text-xl text-gray-600 max-w-2xl mx-auto mb-8">
             عيادات معتمدة ومجهزة بأحدث التقنيات في منطقتك
           </p>
         </div>
 
-        {/* Google Map */}
-        <div className="relative mb-12 rounded-3xl overflow-hidden shadow-2xl">
+        {/* Google Map with Floating Locate Me Button */}
+        <div className="relative mb-12 rounded-3xl overflow-hidden shadow-2xl group">
+          {/* Floating Locate Me Button - Positioned TOP-LEFT */}
+          <div className="absolute top-6 left-6 z-10">
+            <Button
+              variant={location ? 'primary' : 'outline'}
+              size="sm"
+              onClick={() => {
+                if (location) {
+                  clearLocation();
+                  setMapCenter(initialCenter);
+                  setMapZoom(initialZoom);
+                } else {
+                  handleLocateMe();
+                }
+              }}
+              disabled={geoLoading}
+              className={`rounded-2xl w-12 h-12 p-0 flex items-center justify-center transition-all bg-white/90 backdrop-blur-md border-white/20 shadow-xl hover:scale-110 active:scale-95 ${
+                location ? 'ring-2 ring-blue-400 border-blue-400 bg-blue-50' : 'text-gray-700'
+              }`}
+              title="تحديد موقعي"
+            >
+              {geoLoading ? (
+                <RefreshCw className="w-5 h-5 animate-spin text-blue-600" />
+              ) : location ? (
+                <MapPin className="w-5 h-5 text-blue-600 fill-blue-50" />
+              ) : (
+                <Navigation className="w-5 h-5 text-blue-500" />
+              )}
+            </Button>
+            {geoError && (
+              <div className="absolute top-full mt-2 left-0 bg-red-50 text-red-600 text-[10px] p-2 rounded-xl border border-red-100 font-bold shadow-lg min-w-[200px] text-center animate-in fade-in slide-in-from-top-2">
+                {geoError}
+              </div>
+            )}
+          </div>
+
           {!isLoaded ? (
             <div className="h-96 bg-gradient-to-br from-blue-200 via-cyan-100 to-teal-100 flex items-center justify-center">
               <div className="text-center">
@@ -117,12 +195,13 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({ clinics, height 
             // @ts-ignore
             <GoogleMap
               mapContainerStyle={mapContainerStyle}
-              center={baghdadCenter}
-              zoom={12}
+              center={mapCenter}
+              zoom={mapZoom}
               options={mapOptions}
               onClick={() => setSelectedClinic(null)}
+              onLoad={(map) => { mapRef.current = map; }}
             >
-              {clinics.map((clinic) => (
+              {displayedClinics.map((clinic) => (
                 <Marker
                   key={clinic.id}
                   position={{ lat: clinic.location.lat, lng: clinic.location.lng }}
@@ -148,9 +227,9 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({ clinics, height 
                   </div>
                 </InfoWindow>
               )}
-              {userLocation && (
+              {location && (
                 <Marker
-                  position={userLocation}
+                  position={location}
                   icon={{
                     path: window.google.maps.SymbolPath.CIRCLE,
                     scale: 7,
@@ -208,7 +287,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({ clinics, height 
             className="flex gap-6 overflow-x-auto scrollbar-hide scroll-smooth pb-4 px-2"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
-            {clinics.map((clinic) => (
+            {displayedClinics.map((clinic) => (
               <ClinicCard key={clinic.id} clinic={clinic} expandable={true} />
             ))}
           </div>

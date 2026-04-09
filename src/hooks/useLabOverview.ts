@@ -123,6 +123,7 @@ export const useLabOverview = () => {
     const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
     const [ratingDist, setRatingDist] = useState<RatingDistribution[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isPendingActivation, setIsPendingActivation] = useState(false);
 
     const fetchOverviewData = async () => {
         try {
@@ -131,6 +132,13 @@ export const useLabOverview = () => {
             // Real Data Fetch
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
+
+            const { data: labData } = await supabase.from('dental_laboratories').select('account_status').eq('user_id', user.id).maybeSingle();
+            if(!labData || labData.account_status === 'pending') {
+                setIsPendingActivation(true);
+            } else {
+                setIsPendingActivation(false);
+            }
 
             // Fetch Real Data in Parallel
             const [ordersResponse, repsResponse] = await Promise.all([
@@ -225,6 +233,7 @@ export const useLabOverview = () => {
         recentOrders,
         ratingDist,
         loading,
+        isPendingActivation,
         refresh: fetchOverviewData
     };
 };

@@ -9,11 +9,13 @@ export const usePublicClinics = () => {
     useEffect(() => {
         const fetchPublicClinics = async () => {
             try {
-                // Fetch all clinics without owner/member restrictions
+                // Fetch active clinics with showOnMap enabled in settings
                 const { data, error } = await supabase
                     .from('clinics')
                     .select('*')
-                    .limit(50); // Reasonable limit for map
+                    .eq('is_active', true)
+                    .eq('settings->showOnMap', true)
+                    .limit(100);
 
                 if (error) throw error;
 

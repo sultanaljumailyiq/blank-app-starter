@@ -23,6 +23,9 @@ interface AdminTableProps {
   };
   pageSize?: number;
   className?: string;
+  filterOptions?: { label: string; value: string }[];
+  filterValue?: string;
+  onFilterChange?: (value: string) => void;
 }
 
 export const AdminTable: React.FC<AdminTableProps> = ({
@@ -34,7 +37,10 @@ export const AdminTable: React.FC<AdminTableProps> = ({
   exportable = true,
   actions,
   pageSize = 10,
-  className = ''
+  className = '',
+  filterOptions,
+  filterValue,
+  onFilterChange
 }) => {
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState<string>('');
@@ -130,12 +136,28 @@ export const AdminTable: React.FC<AdminTableProps> = ({
                 </div>
               )}
 
-              {filterable && (
+              {filterable && filterOptions && filterOptions.length > 0 ? (
+                <div className="relative flex items-center">
+                  <Filter className="absolute right-3 w-4 h-4 text-gray-400 pointer-events-none" />
+                  <select
+                    value={filterValue || ''}
+                    onChange={(e) => onFilterChange?.(e.target.value)}
+                    className="pl-8 pr-9 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm font-medium text-gray-600 appearance-none cursor-pointer outline-none hover:bg-gray-50 transition-colors bg-[none]"
+                    style={{ WebkitAppearance: 'none', MozAppearance: 'none' }}
+                  >
+                    <option value="">كل أنواع الحسابات</option>
+                    {filterOptions.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute left-3 w-4 h-4 text-gray-400 pointer-events-none" />
+                </div>
+              ) : filterable ? (
                 <button className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors text-gray-600">
                   <Filter className="w-4 h-4" />
                   <span>فلترة</span>
                 </button>
-              )}
+              ) : null}
 
               {exportable && (
                 <button

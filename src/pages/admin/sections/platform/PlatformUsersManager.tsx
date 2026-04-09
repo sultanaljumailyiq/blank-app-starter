@@ -9,11 +9,12 @@ import { LabDetailsModal } from '../../components/LabDetailsModal';
 import { OwnerDetailsModal } from '../../components/OwnerDetailsModal';
 import { toast } from 'sonner';
 
-export const UsersManager: React.FC = () => {
+export const PlatformUsersManager: React.FC = () => {
     const { users, loading } = useAdminCommunity();
     const [selectedUser, setSelectedUser] = useState<any>(null);
     const [modalType, setModalType] = useState<'supplier' | 'lab' | 'owner' | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [roleFilter, setRoleFilter] = useState('');
 
     // Fetch full details for the selected user type before opening modal
     const handleViewDetails = async (user: any) => {
@@ -103,8 +104,8 @@ export const UsersManager: React.FC = () => {
                     id: data.id,
                     name: data.lab_name || data.name || user.full_name,
                     ownerName: user.full_name,
-                    phone: data.phone || user.phone_number,
-                    address: data.address || user.location,
+                    phone: data.phone || user.phone_number || '',
+                    address: data.address || user.location || '',
                     joinDate: data.created_at || user.created_at,
                     totalRevenue: data.total_revenue || 0,
                     pendingCommission: data.pending_commission || 0,
@@ -114,7 +115,23 @@ export const UsersManager: React.FC = () => {
                 });
                 setModalType('lab');
             } else {
-                toast.error('لم يتم العثور على بيانات المختبر المرتبطة');
+                // Fallback: If no lab record found, create a temporary one from user profile
+                const fallbackLab = {
+                    id: user.id,
+                    name: user.full_name || 'غير محدد',
+                    ownerName: user.full_name,
+                    phone: user.phone_number || '',
+                    address: user.location || '',
+                    joinDate: user.created_at || new Date().toISOString(),
+                    totalRevenue: 0,
+                    pendingCommission: 0,
+                    commissionPercentage: 0,
+                    status: 'pending',
+                    isVerified: false
+                };
+                setSelectedUser(fallbackLab);
+                setModalType('lab');
+                toast.warning('تم عرض بيانات المختبر (لا يوجد سجل مختبر مرتبط بعد)');
             }
         } else if (user.role === 'doctor') {
             // For doctor/owner, we just pass the ID to the modal and it fetches the rest
@@ -125,6 +142,7 @@ export const UsersManager: React.FC = () => {
 
     const filteredUsers = users.filter((user: any) =>
         ['doctor', 'lab', 'laboratory', 'supplier', 'admin'].includes(user.role) &&
+        (roleFilter ? (roleFilter === 'lab' ? ['lab', 'laboratory'].includes(user.role) : user.role === roleFilter) : true) &&
         (user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             user.email?.toLowerCase().includes(searchTerm.toLowerCase()))
     );
@@ -174,7 +192,7 @@ export const UsersManager: React.FC = () => {
         {
             key: 'actions',
             title: 'إجراءات',
-            render: (_, record: any) => (
+            render: (_: any, record: any) => (
                 <div className="flex items-center gap-2">
                     <Button
                         size="sm"
@@ -197,15 +215,28 @@ export const UsersManager: React.FC = () => {
                     <h3 className="font-bold text-gray-900">المستخدمين المسجلين</h3>
                     <p className="text-gray-500 text-sm">عرض كافة المستخدمين في المنصة</p>
                 </div>
-                <div className="relative">
-                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
-                    <input
-                        type="text"
-                        placeholder="بحث..."
-                        className="pl-4 pr-10 py-2 bg-gray-50 border rounded-lg text-sm focus:bg-white transition-colors"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
+                <div className="flex items-center gap-2">
+                    <select
+                        value={roleFilter}
+                        onChange={(e) => setRoleFilter(e.target.value)}
+                        className="py-2 px-3 bg-gray-50 border rounded-lg text-sm focus:bg-white transition-colors"
+                    >
+                        <option value="">كل الأدوار</option>
+                        <option value="doctor">طبيب</option>
+                        <option value="lab">مختبر</option>
+                        <option value="supplier">مورد</option>
+                        <option value="admin">مسؤول</option>
+                    </select>
+                    <div className="relative">
+                        <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+                        <input
+                            type="text"
+                            placeholder="بحث..."
+                            className="pl-4 pr-10 py-2 bg-gray-50 border rounded-lg text-sm focus:bg-white transition-colors"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
                 </div>
             </div>
 

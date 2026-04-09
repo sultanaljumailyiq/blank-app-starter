@@ -20,7 +20,7 @@ export interface PatientData {
     notes?: string;
 }
 
-export const usePatients = (clinicId?: string) => {
+export const usePatients = (clinicId?: string, clinicIds?: string[]) => {
     const { user } = useAuth();
     const [patients, setPatients] = useState<PatientData[]>([]);
     const [loading, setLoading] = useState(false);
@@ -31,7 +31,7 @@ export const usePatients = (clinicId?: string) => {
         mountedRef.current = true;
         fetchPatients();
         return () => { mountedRef.current = false; };
-    }, [clinicId, user]);
+    }, [clinicId, clinicIds?.join(','), user]);
 
     const fetchPatients = async () => {
         setLoading(true);
@@ -39,9 +39,17 @@ export const usePatients = (clinicId?: string) => {
             let query = supabase.from('patients').select('*').is('deleted_at', null);
 
             if (clinicId) {
+                // Single clinic filter
                 query = query.eq('clinic_id', clinicId);
-            } else if (user?.id) {
-                // If no specific clinic, filter by user access (implied RLS or verify here)
+            } else if (clinicIds !== undefined) {
+                // Multiple clinics filter
+                if (clinicIds.length === 0) {
+                    // User has no clinics — return empty, don't fetch all
+                    setPatients([]);
+                    setLoading(false);
+                    return;
+                }
+                query = query.in('clinic_id', clinicIds);
             }
 
             query = query.order('created_at', { ascending: false });

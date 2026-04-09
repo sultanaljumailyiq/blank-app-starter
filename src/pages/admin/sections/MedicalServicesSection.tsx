@@ -541,19 +541,19 @@ const FeaturedClinicsManager = () => {
 
                 // 2. Fetch Subscriptions
                 const { data: subscriptions } = await supabase
-                    .from('user_subscriptions')
+                    .from('subscription_requests')
                     .select(`
-                        user_id,
+                        doctor_id,
                         plan_id,
                         status,
                         subscription_plans (name, name_en)
                     `)
-                    .in('user_id', ownerIds)
-                    .in('status', ['active', 'trialing']);
+                    .in('doctor_id', ownerIds)
+                    .eq('status', 'approved');
 
                 // 3. Merge Data
                 const mergedClinics = allClinics.map(clinic => {
-                    const sub = subscriptions?.find(s => s.user_id === clinic.owner_id);
+                    const sub = subscriptions?.find(s => s.doctor_id === clinic.owner_id);
                     let planName = 'غير مشترك';
 
                     if (sub?.subscription_plans) {

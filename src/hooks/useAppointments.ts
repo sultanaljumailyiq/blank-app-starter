@@ -9,7 +9,14 @@ export const useAppointments = (clinicId?: string) => {
 
     useEffect(() => {
         mountedRef.current = true;
-        fetchAppointments();
+        // Only fetch when a clinic context is provided
+        if (clinicId !== undefined) {
+            fetchAppointments();
+        } else {
+            // No clinic context → clear data, don't fetch
+            setAppointments([]);
+            setLoading(false);
+        }
         return () => { mountedRef.current = false; };
     }, [clinicId]);
 
@@ -23,8 +30,27 @@ export const useAppointments = (clinicId?: string) => {
                 .order('appointment_date', { ascending: false })
                 .order('appointment_time', { ascending: false });
 
+            // Fetch user session first to apply fallback logic
+            const { data: { user } } = await supabase.auth.getUser();
+
             if (clinicId && clinicId !== 'all') {
                 query = query.eq('clinic_id', clinicId);
+            } else if (user && user.user_metadata?.role !== 'admin') {
+                // If 'all' is selected, strictly bind to user's clinics to prevent leaking
+                const { data: ownedClinics } = await supabase.from('clinics').select('id').eq('owner_id', user.id);
+                const { data: staffClinics } = await supabase.from('staff').select('clinic_id').or(`user_id.eq.${user.id},auth_user_id.eq.${user.id}`).in('status', ['active', 'on_leave']);
+                
+                const accessibleIds = [
+                    ...(ownedClinics?.map(c => c.id) || []),
+                    ...(staffClinics?.map(c => c.clinic_id) || [])
+                ];
+                
+                if (accessibleIds.length > 0) {
+                    query = query.in('clinic_id', accessibleIds);
+                } else {
+                    // Prevent returning anything if they have no clinics
+                    query = query.in('clinic_id', [-1]); 
+                }
             }
 
             let { data, error } = await query;
@@ -38,7 +64,22 @@ export const useAppointments = (clinicId?: string) => {
 
                 if (clinicId && clinicId !== 'all') {
                     query = query.eq('clinic_id', clinicId);
+                } else if (user && user.user_metadata?.role !== 'admin') {
+                    const { data: ownedClinics } = await supabase.from('clinics').select('id').eq('owner_id', user.id);
+                    const { data: staffClinics } = await supabase.from('staff').select('clinic_id').or(`user_id.eq.${user.id},auth_user_id.eq.${user.id}`).in('status', ['active', 'on_leave']);
+                    
+                    const accessibleIds = [
+                        ...(ownedClinics?.map(c => c.id) || []),
+                        ...(staffClinics?.map(c => c.clinic_id) || [])
+                    ];
+                    
+                    if (accessibleIds.length > 0) {
+                        query = query.in('clinic_id', accessibleIds);
+                    } else {
+                        query = query.in('clinic_id', [-1]); 
+                    }
                 }
+
                 const result = await query;
                 data = result.data;
                 error = result.error;

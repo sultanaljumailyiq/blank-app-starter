@@ -27,13 +27,14 @@ export interface DoctorSubscriptionRequest {
   district: string;
   specialty: string;
   experience: number;
-  requestedPlan: SubscriptionPlan;
+  requestedPlan: SubscriptionPlan | string;
   documents: Document[];
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'expired';
   submittedDate: string;
   reviewedBy?: string;
   reviewDate?: string;
   notes?: string;
+  amountPaid?: string | number;
 }
 
 // خطط الاشتراك
@@ -43,6 +44,7 @@ export interface SubscriptionPlan {
   nameEn: string;
   price: {
     monthly: number;
+    semiAnnual?: number;
     yearly?: number;
     currency: string;
   };
@@ -60,7 +62,9 @@ export interface SubscriptionPlan {
 
   isPopular: boolean;
   hasAISupport?: boolean; // Deprecated, use aiRequestLimit
+  duration?: 'monthly' | 'yearly' | string;
 }
+
 
 // الوكلاء المحليين
 export interface LocalAgent {

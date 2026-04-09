@@ -13,7 +13,7 @@ import { useDemoLabData } from '../../hooks/useDemoLabData';
 import { Button } from '../../components/common/Button';
 
 export const LaboratoryOverview: React.FC = () => {
-  const { stats, notifications, recentOrders, ratingDist, loading, refresh } = useLabOverview();
+  const { stats, notifications, recentOrders, ratingDist, loading, isPendingActivation, refresh } = useLabOverview();
   const { generateDemoUnidata, seeding } = useDemoLabData();
 
   // Representative Info
@@ -97,6 +97,19 @@ export const LaboratoryOverview: React.FC = () => {
 
   return (
     <div className="space-y-6" dir="rtl">
+      {/* Pending Account Banner */}
+      {isPendingActivation && (
+        <div className="bg-orange-50 border-l-4 border-orange-500 p-4 rounded-lg shadow-sm flex items-start gap-3">
+          <AlertTriangle className="w-6 h-6 text-orange-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <h3 className="text-orange-800 font-bold text-lg">حسابك قيد المراجعة</h3>
+            <p className="text-orange-700 text-sm mt-1">
+              حساب المختبر الخاص بك بانتظار التفعيل من قبل إدارة المنصة. بعض الميزات قد تكون مقيدة حتى يتم التفعيل.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Welcome Section & Actions */}
       <div className="flex flex-col md:flex-row gap-4 items-stretch">
         <div className="flex-1 bg-gradient-to-r from-purple-600 to-purple-800 rounded-lg p-6 text-white flex items-center justify-between">

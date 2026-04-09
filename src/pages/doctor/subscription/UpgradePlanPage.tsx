@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAdminSubscriptions } from '../../../hooks/useAdminSubscriptions';
-import { useAdminData, PaymentMethod, Agent } from '../../../hooks/useAdminData';
+import { useAdminData } from '../../../hooks/useAdminData';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useStorage } from '../../../hooks/useStorage';
 import { supabase } from '../../../lib/supabase';
@@ -8,7 +8,7 @@ import { Card } from '../../../components/common/Card';
 import { Button } from '../../../components/common/Button';
 import {
     CheckCircle, Star, Shield, CreditCard, Upload,
-    MapPin, Phone, User, Copy, QrCode, Info, Search
+    MapPin, Phone, User, Copy, QrCode, Info, Search, Clock, Zap
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { PaymentModal } from '../../../components/payment/PaymentModal';
@@ -26,12 +26,13 @@ export const UpgradePlanPage: React.FC = () => {
     const plans = fetchedPlans;
 
     const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+    const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'semi_annual' | 'yearly'>('monthly');
     const [step, setStep] = useState(1); // 1: Select Plan, 2: Payment
     const [selectedPayment, setSelectedPayment] = useState<'zain' | 'rafidain' | 'agent' | null>(null);
     const [selectedAgentId, setSelectedAgentId] = useState<string>('');
     const [couponCode, setCouponCode] = useState('');
+    const [appliedCouponCode, setAppliedCouponCode] = useState('');
     const [discount, setDiscount] = useState(0);
-    // proofImage removed as it was part of old logic
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -62,47 +63,39 @@ export const UpgradePlanPage: React.FC = () => {
 
     const selectedPlan = plans.find(p => p.id === selectedPlanId);
 
-    const monthlyPrice = selectedPlan?.price.monthly || 0;
+    // Compute price based on selected billing period
+    const getPlanPrice = (plan: any) => {
+        if (!plan) return 0;
+        if (billingPeriod === 'yearly') return plan.price.yearly || Math.round(plan.price.monthly * 12 * 0.85);
+        if (billingPeriod === 'semi_annual') return plan.price.semiAnnual || Math.round(plan.price.monthly * 6 * 0.9);
+        return plan.price.monthly;
+    };
+
+    const selectedPlanPrice = getPlanPrice(selectedPlan);
+    const monthlyPrice = selectedPlanPrice; // used for coupon calc
+
+    const billingOptions: { key: 'monthly' | 'semi_annual' | 'yearly'; label: string; badge?: string; desc: string }[] = [
+        { key: 'monthly',     label: 'شهري',   desc: 'ادفع شهراً بشهر' },
+        { key: 'semi_annual', label: '6 أشهر', badge: 'وفر 10%', desc: 'نصف سنة بسعر مخفض' },
+        { key: 'yearly',      label: 'سنوي',   badge: 'وفر 15%', desc: 'أفضل قيمة للمال' },
+    ];
 
     const handleApplyCoupon = () => {
-        // Correctly accessing coupon from useAdminSubscriptions
         const coupon = coupons.find(c => c.code === couponCode.toUpperCase()) as any;
 
-        if (!coupon) {
-            alert('كوبون غير صالح');
-            return;
-        }
+        if (!coupon) { alert('كوبون غير صالح'); return; }
+        if (!coupon.isActive) { alert('هذا الكوبون معطل حالياً'); return; }
+        if (coupon.endDate && new Date(coupon.endDate) < new Date()) { alert('عذراً، انتهت صلاحية هذا الكوبون'); return; }
+        if (coupon.startDate && new Date(coupon.startDate) > new Date()) { alert('هذا الكوبون غير فعال بعد'); return; }
+        if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit) { alert('عذراً، نفد العدد المسموح لهذا الكوبون'); return; }
 
-        if (!coupon.isActive) {
-            alert('هذا الكوبون معطل حالياً');
-            return;
-        }
-
-        // 1. Check Expiry
-        if (coupon.endDate && new Date(coupon.endDate) < new Date()) {
-            alert('عذراً، انتهت صلاحية هذا الكوبون');
-            return;
-        }
-
-        // 2. Check Start Date
-        if (coupon.startDate && new Date(coupon.startDate) > new Date()) {
-            alert('هذا الكوبون غير فعال بعد');
-            return;
-        }
-
-        // 3. Check Usage Limit
-        if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit) {
-            alert('عذراً، نفد العدد المسموح لهذا الكوبون');
-            return;
-        }
-
-        // Apply Logic
         const discountValue = coupon.type === 'percentage'
             ? (monthlyPrice * (coupon.value / 100))
             : coupon.value;
 
         setDiscount(discountValue);
-        alert(`تم تطبيق خصم بقيمة ${discountValue.toLocaleString()} دينار!`);
+        setAppliedCouponCode(couponCode.toUpperCase());
+        alert(`✅ تم تطبيق خصم بقيمة ${discountValue.toLocaleString()} دينار!`);
     };
 
     if (showSuccess) {
@@ -129,11 +122,37 @@ export const UpgradePlanPage: React.FC = () => {
         return (
             <div className="min-h-screen bg-gray-50 py-12 px-4" dir="rtl">
                 <div className="max-w-6xl mx-auto">
-                    <div className="text-center mb-12">
+                    <div className="text-center mb-10">
                         <h1 className="text-3xl font-bold text-gray-900 mb-4">اختر خطة الاشتراك المناسبة</h1>
                         <p className="text-gray-600">ارتقِ بعيادتك للمستوى التالي مع باقات Smart Dental المتقدمة</p>
                     </div>
 
+                    {/* Duration Selector */}
+                    <div className="flex justify-center mb-10">
+                        <div className="inline-flex bg-white border border-gray-200 rounded-2xl p-1.5 shadow-sm gap-1">
+                            {billingOptions.map(opt => (
+                                <button
+                                    key={opt.key}
+                                    onClick={() => { setBillingPeriod(opt.key); setDiscount(0); setAppliedCouponCode(''); }}
+                                    className={`relative flex flex-col items-center px-6 py-3 rounded-xl transition-all text-sm font-medium ${
+                                        billingPeriod === opt.key
+                                            ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+                                            : 'text-gray-600 hover:bg-gray-50'
+                                    }`}
+                                >
+                                    {opt.badge && (
+                                        <span className={`absolute -top-2 -left-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                                            billingPeriod === opt.key ? 'bg-yellow-400 text-yellow-900' : 'bg-green-100 text-green-700'
+                                        }`}>{opt.badge}</span>
+                                    )}
+                                    <span className="font-bold">{opt.label}</span>
+                                    <span className={`text-[11px] mt-0.5 ${billingPeriod === opt.key ? 'text-blue-100' : 'text-gray-400'}`}>{opt.desc}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Plans Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                         {plans.length === 0 && (
                             <div className="col-span-3 text-center py-12 text-gray-500">
@@ -145,6 +164,7 @@ export const UpgradePlanPage: React.FC = () => {
                             const isFree = plan.price.monthly === 0;
                             const isSelected = selectedPlanId === plan.id;
                             const isCurrent = subscription ? subscription.plan.id === plan.id : isFree;
+                            const displayPrice = getPlanPrice(plan);
 
                             return (
                                 <Card
@@ -161,9 +181,17 @@ export const UpgradePlanPage: React.FC = () => {
                                     ) : null}
 
                                     <h3 className="text-xl font-bold text-gray-900 mb-2">{plan.name}</h3>
-                                    <div className={`text-3xl font-bold mb-6 ${isFree ? 'text-gray-400' : 'text-blue-600'}`}>
-                                        {plan.price.monthly.toLocaleString()} <span className="text-sm font-normal text-gray-500">{plan.price.currency || 'د.ع'} / شهرياً</span>
+                                    <div className={`mb-2 ${isFree ? 'text-gray-400' : 'text-blue-600'}`}>
+                                        <span className="text-3xl font-bold">{displayPrice.toLocaleString()}</span>
+                                        <span className="text-sm font-normal text-gray-500 mr-1">
+                                            {plan.price.currency || 'د.ع'} / {billingPeriod === 'monthly' ? 'شهرياً' : billingPeriod === 'semi_annual' ? 'لـ 6 أشهر' : 'سنوياً'}
+                                        </span>
                                     </div>
+                                    {billingPeriod !== 'monthly' && !isFree && (
+                                        <p className="text-xs text-green-600 font-medium mb-4">
+                                            بدلاً من {(plan.price.monthly * (billingPeriod === 'semi_annual' ? 6 : 12)).toLocaleString()} د.ع
+                                        </p>
+                                    )}
 
                                     <div className="grid grid-cols-2 gap-2 mb-4 bg-gray-50 p-2 rounded-lg">
                                         <div className="flex flex-col items-center p-2 bg-white rounded border border-gray-100 shadow-sm">
@@ -292,7 +320,9 @@ export const UpgradePlanPage: React.FC = () => {
                 senderPhone,
                 notes,
                 receiptUrl,
-                discount_applied: discount
+                discount_applied: discount,
+                billing_period: billingPeriod,
+                coupon_code: appliedCouponCode || null
             };
 
             // Update Profile with Phone Number to ensure contact info is saved
@@ -300,7 +330,6 @@ export const UpgradePlanPage: React.FC = () => {
                 await supabase.from('profiles').update({ phone: senderPhone }).eq('id', user.id);
             }
 
-            // 3. Insert Request
             const { error: insertError } = await supabase
                 .from('subscription_requests')
                 .insert([{
@@ -310,7 +339,7 @@ export const UpgradePlanPage: React.FC = () => {
                     status: 'pending',
                     payment_method: selectedPayment === 'agent' ? 'cash_agent' : selectedPayment,
                     payment_details: paymentDetails,
-                    amount_paid: Math.max(0, (selectedPlan.price.monthly || 0) - discount)
+                    amount_paid: Math.max(0, selectedPlanPrice - discount)
                 }]);
 
             if (insertError) throw insertError;

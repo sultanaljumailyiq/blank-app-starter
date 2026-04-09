@@ -127,29 +127,34 @@ export function useAdminCommunity() {
                 const userIds = usersData.map((u: any) => u.id);
 
                 const [clinicsRes, labsRes, suppliersRes] = await Promise.all([
-                    supabase.from('clinics').select('owner_id, image_url').in('owner_id', userIds),
-                    supabase.from('dental_laboratories').select('user_id, logo_url').in('user_id', userIds),
-                    supabase.from('suppliers').select('user_id, logo').in('user_id', userIds)
+                    supabase.from('clinics').select('owner_id, image_url, governorate').in('owner_id', userIds),
+                    supabase.from('dental_laboratories').select('user_id, logo_url, governorate').in('user_id', userIds),
+                    supabase.from('suppliers').select('user_id, logo, governorate').in('user_id', userIds)
                 ]);
 
                 // Create lookup maps
-                const clinicMap: Record<string, string> = {};
-                clinicsRes.data?.forEach((c: any) => { if (c.owner_id && c.image_url) clinicMap[c.owner_id] = c.image_url; });
+                const clinicMap: Record<string, { image_url?: string, governorate?: string }> = {};
+                clinicsRes.data?.forEach((c: any) => { if (c.owner_id) clinicMap[c.owner_id] = { image_url: c.image_url, governorate: c.governorate }; });
 
-                const labMap: Record<string, string> = {};
-                labsRes.data?.forEach((l: any) => { if (l.user_id && l.logo_url) labMap[l.user_id] = l.logo_url; });
+                const labMap: Record<string, { logo_url?: string, governorate?: string }> = {};
+                labsRes.data?.forEach((l: any) => { if (l.user_id) labMap[l.user_id] = { logo_url: l.logo_url, governorate: l.governorate }; });
 
-                const supplierMap: Record<string, string> = {};
-                suppliersRes.data?.forEach((s: any) => { if (s.user_id && s.logo) supplierMap[s.user_id] = s.logo; });
+                const supplierMap: Record<string, { logo?: string, governorate?: string }> = {};
+                suppliersRes.data?.forEach((s: any) => { if (s.user_id) supplierMap[s.user_id] = { logo: s.logo, governorate: s.governorate }; });
 
                 const mappedUsers = usersData
                     .filter((user: any) => !user.banned) // Hide suspended (banned) users
                     .map((user: any) => {
                         // For suppliers: prioritize business logo over community profile avatar
-                        const supplierLogo = (user.role === 'supplier') ? supplierMap[user.id] : null;
+                        const supplierLogo = (user.role === 'supplier') ? supplierMap[user.id]?.logo : null;
+                        
+                        // Pick governorate from business profile if not specified in basic profile
+                        const businessGov = supplierMap[user.id]?.governorate || clinicMap[user.id]?.governorate || labMap[user.id]?.governorate;
+
                         return {
                             ...user,
-                            avatar_url: supplierLogo || user.avatar_url || clinicMap[user.id] || labMap[user.id] || supplierMap[user.id]
+                            governorate: user.governorate || businessGov || null,
+                            avatar_url: supplierLogo || user.avatar_url || clinicMap[user.id]?.image_url || labMap[user.id]?.logo_url || supplierMap[user.id]?.logo
                         };
                     });
                 // Deduplicate by ID to prevent the same account appearing twice

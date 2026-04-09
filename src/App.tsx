@@ -128,7 +128,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; requiredRole?: strin
 
 function AppContent() {
   return (
-    <Router>
+    <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
         {/* Public Routes Wrapped in MainLayout (Header + Bottom Nav) */}
         <Route element={<MainLayout />}>
@@ -309,6 +309,7 @@ function AppContent() {
   );
 }
 
+import { CompleteRegistrationModal } from './components/auth/CompleteRegistrationModal';
 import { StoreProvider } from './context/StoreContext';
 import { CommunityProvider } from './contexts/CommunityContext';
 import { PlatformProvider } from './contexts/PlatformContext';
@@ -317,6 +318,7 @@ function App() {
   return (
     <LanguageProvider>
       <AuthProvider>
+        <CompleteRegistrationModal />
         <StoreProvider>
           <CommunityProvider>
             <PlatformProvider>

@@ -101,11 +101,20 @@ export const SubscriptionsSection: React.FC = () => {
       key: 'requestedPlan',
       title: 'الباقة',
       sortable: true,
-      render: (value) => (
-        <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-bold">
-          {value}
-        </span>
-      )
+      render: (value, record: any) => {
+        const period = record.billingPeriod || 'monthly';
+        const durationIcon = period === 'yearly' ? '12' : period === 'semi_annual' ? '6' : '1';
+        return (
+          <div className="flex items-center gap-1.5">
+            <span className="w-5 h-5 flex items-center justify-center bg-purple-600 text-white text-[10px] font-black rounded-md shadow-sm">
+              {durationIcon}
+            </span>
+            <span className="px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-100 rounded-full text-xs font-bold">
+              {value}
+            </span>
+          </div>
+        );
+      }
     },
     {
       key: 'paymentMethod',
@@ -124,21 +133,40 @@ export const SubscriptionsSection: React.FC = () => {
       render: (value) => {
         const statusConfig = {
           pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'معلق' },
-          approved: { bg: 'bg-green-100', text: 'text-green-800', label: 'مقبول' },
-          rejected: { bg: 'bg-red-100', text: 'text-red-800', label: 'مرفوض' }
+          approved: { bg: 'bg-green-100', text: 'text-green-800', label: 'مقبول / نشط' },
+          rejected: { bg: 'bg-red-100', text: 'text-red-800', label: 'مرفوض' },
+          expired: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'منتهي الصلاحية' }
         };
         const config = statusConfig[value as keyof typeof statusConfig] || statusConfig.pending;
         return (
-          <span className={`px-2 py-1 ${config.bg} ${config.text} rounded-full text-sm`}>
+          <span className={`px-2 py-0.5 ${config.bg} ${config.text} rounded-full text-xs font-bold whitespace-nowrap`}>
             {config.label}
           </span>
         );
       }
     },
     {
-      key: 'requestDate',
+      key: 'amountPaid',
+      title: 'القيمة',
+      sortable: true,
+      render: (value) => <span className="font-semibold text-gray-900">{Number(value || 0).toLocaleString()} د.ع</span>
+    },
+    {
+      key: 'discount',
+      title: 'الخصم',
+      render: (value) => Number(value) > 0 ? <span className="text-sm font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded">{Number(value).toLocaleString()} د.ع</span> : <span className="text-gray-400">-</span>
+    },
+    {
+      key: 'submittedDate',
       title: 'تاريخ الطلب',
-      sortable: true
+      sortable: true,
+      render: (value) => new Date(value).toLocaleDateString('ar-IQ')
+    },
+    {
+      key: 'endDate',
+      title: 'تاريخ الانتهاء',
+      sortable: true,
+      render: (value) => value ? new Date(value).toLocaleDateString('ar-IQ') : '-'
     }
   ];
 
@@ -179,6 +207,10 @@ export const SubscriptionsSection: React.FC = () => {
 
   // Stats
   const pendingRequests = requests.filter(r => r.status === 'pending').length;
+  // Calculate dynamic Total Revenue
+  const totalRevenue = requests
+    .filter(r => r.status === 'approved' || r.status === 'expired')
+    .reduce((sum, r) => sum + Number(r.amountPaid || 0), 0);
 
   return (
     <div className="space-y-8">
@@ -191,7 +223,7 @@ export const SubscriptionsSection: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <StatsCard title="طلبات معلقة" value={pendingRequests} description="بانتظار التأكيد" icon={Clock} color="orange" />
         <StatsCard title="اشتراكات نشطة" value={requests.filter(r => r.status === 'approved').length} description="أطباء مشتركون" icon={CheckCircle} color="green" />
-        <StatsCard title="إجمالي الإيرادات" value="45.5M" description="د.ع لهذا الشهر" icon={DollarSign} color="purple" />
+        <StatsCard title="إجمالي الإيرادات" value={`${(totalRevenue).toLocaleString()}`} description="د.ع إجمالي قيمة الاشتراكات" icon={DollarSign} color="purple" />
       </div>
 
       {/* Tabs */}
@@ -307,6 +339,7 @@ const PlanForm: React.FC<{ initialValues?: any, onSubmit: (data: any) => void, o
     name: initialValues?.name || '',
     nameEn: initialValues?.nameEn || '',
     price: initialValues?.price?.monthly || 0,
+    semiAnnualPrice: initialValues?.price?.semiAnnual || 0,
     yearlyPrice: initialValues?.price?.yearly || 0,
 
     // Configs
@@ -382,7 +415,7 @@ const PlanForm: React.FC<{ initialValues?: any, onSubmit: (data: any) => void, o
     const submissionData = {
       name: formData.name,
       nameEn: formData.nameEn || formData.name,
-      price: { monthly: Number(formData.price), yearly: Number(formData.yearlyPrice), currency: "د.ع" },
+      price: { monthly: Number(formData.price), semiAnnual: Number(formData.semiAnnualPrice) || undefined, yearly: Number(formData.yearlyPrice), currency: "د.ع" },
       features: features,
 
       // Config entries
@@ -438,22 +471,36 @@ const PlanForm: React.FC<{ initialValues?: any, onSubmit: (data: any) => void, o
             <div className="p-4 bg-green-50 rounded-xl border border-green-100">
               <h4 className="flex items-center gap-2 font-bold text-green-800 mb-3">
                 <DollarSign className="w-4 h-4" />
-                التسعير
+                التسعير حسب مدة الاشتراك
               </h4>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">سعر شهري (د.ع)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">شهري (د.ع)</label>
                   <input type="number" required className="w-full p-2 border border-green-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
                     value={formData.price} onChange={e => setFormData({ ...formData, price: Number(e.target.value) })} />
-                  <p className="text-xs text-green-600 mt-1">ضع 0 لجعل الباقة مجانية</p>
+                  <p className="text-xs text-green-600 mt-1">0 = مجاني</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">سعر سنوي (د.ع)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    6 أشهر (د.ع)
+                    <span className="mr-1 text-[10px] bg-green-100 text-green-700 px-1 rounded">وفر 10%</span>
+                  </label>
                   <input type="number" className="w-full p-2 border border-green-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
-                    value={formData.yearlyPrice} onChange={e => setFormData({ ...formData, yearlyPrice: Number(e.target.value) })} />
+                    value={formData.semiAnnualPrice || ''} onChange={e => setFormData({ ...formData, semiAnnualPrice: Number(e.target.value) })}
+                    placeholder={formData.price ? String(Math.round(formData.price * 6 * 0.9)) : '0'} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    سنوي (د.ع)
+                    <span className="mr-1 text-[10px] bg-green-100 text-green-700 px-1 rounded">وفر 15%</span>
+                  </label>
+                  <input type="number" className="w-full p-2 border border-green-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
+                    value={formData.yearlyPrice} onChange={e => setFormData({ ...formData, yearlyPrice: Number(e.target.value) })}
+                    placeholder={formData.price ? String(Math.round(formData.price * 12 * 0.85)) : '0'} />
                 </div>
               </div>
             </div>
+
           </div>
         )}
 
@@ -635,6 +682,35 @@ const CouponsManager: React.FC<{
   onDelete: (id: string) => void
 }> = ({ coupons, onAdd, onDelete }) => {
   const [showModal, setShowModal] = useState(false);
+  const [selectedCoupon, setSelectedCoupon] = useState<any>(null);
+  const [couponUsages, setCouponUsages] = useState<any[]>([]);
+  const [usageLoading, setUsageLoading] = useState(false);
+
+  const handleViewCouponUsage = async (coupon: any) => {
+    setSelectedCoupon(coupon);
+    setUsageLoading(true);
+    setCouponUsages([]);
+    try {
+      const { data, error } = await supabase
+        .from('subscription_requests')
+        .select('*, doctor_profile:profiles!doctor_id(full_name, phone, avatar_url), plan:subscription_plans(name)')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const usages = (data || []).filter(req => {
+        const pd = req.payment_details || {};
+        const code = pd.coupon_code || pd.couponCode || pd.discount_code;
+        return code === coupon.code;
+      });
+      setCouponUsages(usages);
+    } catch (e) {
+      console.error('Error fetching coupon usages:', e);
+    } finally {
+      setUsageLoading(false);
+    }
+  };
+
   const [newCoupon, setNewCoupon] = useState({
     name: '',
     code: '',
@@ -747,13 +823,22 @@ const CouponsManager: React.FC<{
                     </span>
                   </td>
                   <td className="px-6 py-4 text-left">
-                    <button
-                      onClick={() => onDelete(coupon.id)}
-                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      title="حذف الكوبون"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleViewCouponUsage(coupon)}
+                        className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="عرض الأطباء الذين استخدموا الكوبون"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => onDelete(coupon.id)}
+                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="حذف الكوبون"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )
@@ -849,6 +934,104 @@ const CouponsManager: React.FC<{
           </div>
 
         </form>
+      </AdminModal>
+
+      {/* Coupon Usage Details Modal */}
+      <AdminModal
+        isOpen={!!selectedCoupon}
+        onClose={() => setSelectedCoupon(null)}
+        title={selectedCoupon ? `مستخدمو الكوبون: ${selectedCoupon.name}` : ''}
+        size="lg"
+      >
+        {selectedCoupon && (
+          <div className="space-y-4">
+            {/* Coupon Summary */}
+            <div className="flex items-center gap-3 p-3 bg-purple-50 rounded-xl border border-purple-100">
+              <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                <Ticket className="w-5 h-5 text-purple-600" />
+              </div>
+              <div className="flex-1">
+                <div className="font-bold text-gray-900">{selectedCoupon.name}</div>
+                <div className="font-mono text-xs text-purple-600 bg-white px-2 py-0.5 rounded border border-purple-200 inline-block mt-0.5">{selectedCoupon.code}</div>
+              </div>
+              <div className="text-left">
+                <div className="text-xs text-gray-500">إجمالي الاستخدام</div>
+                <div className="font-bold text-xl text-purple-600">{usageLoading ? '...' : couponUsages.length}</div>
+              </div>
+            </div>
+
+            {usageLoading ? (
+              <div className="py-12 text-center text-gray-400">
+                <div className="w-8 h-8 border-2 border-purple-300 border-t-purple-600 rounded-full animate-spin mx-auto mb-3" />
+                جاري التحميل...
+              </div>
+            ) : couponUsages.length === 0 ? (
+              <div className="py-12 text-center text-gray-400">
+                <Ticket className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p className="font-medium">لم يستخدم أحد هذا الكوبون بعد</p>
+                <p className="text-sm mt-1">سيظهر هنا اسم كل طبيب يستخدمه عند الاشتراك</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50 text-gray-500 text-xs font-bold">
+                      <th className="px-4 py-3 text-right">الطبيب</th>
+                      <th className="px-4 py-3 text-right">الباقة</th>
+                      <th className="px-4 py-3 text-right">المدة</th>
+                      <th className="px-4 py-3 text-right">الخصم</th>
+                      <th className="px-4 py-3 text-right">التاريخ</th>
+                      <th className="px-4 py-3 text-right">الحالة</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {couponUsages.map((req: any) => {
+                      const bp = req.payment_details?.billing_period;
+                      const bpLabel = bp === 'yearly' ? 'سنوي' : bp === 'semi_annual' ? '6 أشهر' : 'شهري';
+                      const discount = req.payment_details?.discount_applied || 0;
+                      return (
+                        <tr key={req.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-bold text-xs overflow-hidden">
+                                {req.doctor_profile?.avatar_url ? <img src={req.doctor_profile.avatar_url} className="w-full h-full object-cover" alt="" /> : (req.doctor_profile?.full_name?.charAt(0) || '?')}
+                              </div>
+                              <div>
+                                <div className="font-medium text-gray-900">{req.doctor_profile?.full_name || 'غير معروف'}</div>
+                                <div className="text-xs text-gray-400" dir="ltr">{req.doctor_profile?.phone}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full text-xs font-bold">{req.plan?.name || '-'}</span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="text-xs text-blue-600 font-medium">{bpLabel}</span>
+                          </td>
+                          <td className="px-4 py-3 text-green-600 font-bold text-xs">
+                            {discount > 0 ? `−${Number(discount).toLocaleString()} د.ع` : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-gray-500 text-xs" dir="ltr">
+                            {new Date(req.created_at).toLocaleDateString('ar-EG')}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                              req.status === 'approved' ? 'bg-green-100 text-green-700' :
+                              req.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-red-100 text-red-700'
+                            }`}>
+                              {req.status === 'approved' ? 'مقبول' : req.status === 'pending' ? 'قيد الانتظار' : 'مرفوض'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </AdminModal>
     </div>
   );

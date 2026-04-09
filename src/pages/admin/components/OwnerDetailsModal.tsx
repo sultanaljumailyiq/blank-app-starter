@@ -269,7 +269,7 @@ export const OwnerDetailsModal: React.FC<OwnerDetailsModalProps> = ({
                                                     <MapPin className="w-5 h-5 text-gray-400" />
                                                     <div>
                                                         <div className="text-xs text-gray-500">العنوان</div>
-                                                        <div className="font-medium">{ownerData?.governorate || ownerData?.city || 'بغداد'}</div>
+                                                        <div className="font-medium">{ownerData?.governorate || ownerData?.city || ownerData?.address || 'غير محدد'}</div>
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">

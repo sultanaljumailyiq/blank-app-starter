@@ -105,28 +105,56 @@ export const useNotifications = () => {
     const fetchNotifications = async () => {
         try {
             setLoading(true);
-            const clinicIds = clinics.map(c => c.id);
 
+            if (!user?.id) {
+                setNotifications([]);
+                setLoading(false);
+                return;
+            }
+
+            // Get the IDs of clinics owned by this user
+            const userClinicIds = clinics.map(c => c.id).filter(Boolean);
+
+            // Build the filter: user_id = current user OR (clinic_id IN user's clinics AND user_id IS NULL)
+            // This handles both user-level and clinic-level notifications, but ONLY for this user's clinics
             let query = supabase
                 .from('notifications')
                 .select(`
                     *,
                     clinic:clinics(name)
                 `)
-                .order('created_at', { ascending: false });
+                .order('created_at', { ascending: false })
+                .limit(50);
 
-            // Construct OR filter: user_id = my_id OR clinic_id IN (my_clinics)
-            let filterStr = `user_id.eq.${user?.id}`;
-            if (clinicIds.length > 0) {
-                filterStr += `,clinic_id.in.(${clinicIds.join(',')})`;
+            if (userClinicIds.length > 0) {
+                // Filter: notifications for THIS user, OR notifications for THIS user's clinics (no specific user)
+                query = query.or(
+                    `user_id.eq.${user.id},and(clinic_id.in.(${userClinicIds.join(',')}),user_id.is.null)`
+                );
+            } else {
+                // No clinics: only show notifications directly for this user
+                query = query.eq('user_id', user.id);
             }
 
-            query = query.or(filterStr);
-
-            const { data, error } = await query.limit(50);
+            const { data, error } = await query;
 
             if (!mountedRef.current) return;
-            if (error) throw error;
+            if (error) {
+                // Fallback: just filter by user_id if the complex query fails
+                const { data: fallbackData, error: fallbackError } = await supabase
+                    .from('notifications')
+                    .select(`*, clinic:clinics(name)`)
+                    .eq('user_id', user.id)
+                    .order('created_at', { ascending: false })
+                    .limit(50);
+                if (fallbackError) throw fallbackError;
+                const mapped = (fallbackData || []).map((record: any) => ({
+                    ...mapDbNotification(record),
+                    clinicName: record.clinic?.name
+                }));
+                setNotifications(mapped);
+                return;
+            }
 
             const mapped = (data || []).map((record: any) => ({
                 ...mapDbNotification(record),

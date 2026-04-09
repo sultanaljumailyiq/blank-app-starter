@@ -13,105 +13,6 @@ import { useArticles } from '../../hooks/useArticles';
 import { useGeolocation } from '../../hooks/useGeolocation';
 import { Clinic } from '../../types';
 
-// Internal component for settings
-const NearbyClinicsSettings = ({
-  clinics,
-  onFilter
-}: {
-  clinics: Clinic[];
-  onFilter: (filtered: Clinic[]) => void;
-}) => {
-  const [radius, setRadius] = useState(10);
-  const [isEnabled, setIsEnabled] = useState(false);
-  const { location, getLocation, calculateDistance, loading, error } = useGeolocation();
-
-  useEffect(() => {
-    if (isEnabled && location) {
-      const filtered = clinics.filter(clinic => {
-        // Ensure we only filter from already visible clinics (though the prop passed should be pre-filtered, double safety)
-        if (!clinic.settings?.showOnMap) return false;
-
-        const dist = calculateDistance(
-          location,
-          { lat: clinic.location.lat, lng: clinic.location.lng }
-        );
-        return dist <= radius;
-      });
-      onFilter(filtered);
-    } else {
-      // Reset to only visible clinics
-      onFilter(clinics.filter(c => c.settings?.showOnMap === true));
-    }
-  }, [isEnabled, radius, location, clinics]);
-
-  return (
-    <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 mb-6">
-      <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-        <div className="flex items-center gap-4 w-full md:w-auto">
-          <div className="p-3 bg-blue-50 rounded-2xl">
-            <Navigation className={`w-6 h-6 ${isEnabled ? 'text-blue-600' : 'text-gray-400'}`} />
-          </div>
-          <div>
-            <h3 className="font-bold text-gray-900">إعدادات العيادات القريبة</h3>
-            <p className="text-sm text-gray-500">تصفية النتائج حسب موقعك الحالي</p>
-          </div>
-        </div>
-
-        <div className="flex flex-col md:flex-row items-center gap-6 w-full md:w-auto">
-          {/* Radius Slider - Only show if enabled */}
-          {isEnabled && (
-            <div className="flex items-center gap-4 w-full md:w-64 bg-gray-50 p-3 rounded-xl">
-              <span className="text-sm font-bold text-gray-500 whitespace-nowrap">المسافة: {radius} كم</span>
-              <input
-                type="range"
-                min="1"
-                max="50"
-                value={radius}
-                onChange={(e) => setRadius(parseInt(e.target.value))}
-                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-              />
-            </div>
-          )}
-
-          <div className="flex items-center gap-3">
-            {error && <span className="text-xs text-red-500 font-medium">{error}</span>}
-
-            <Button
-              variant={isEnabled ? 'primary' : 'outline'}
-              onClick={() => {
-                if (!isEnabled && !location) {
-                  getLocation();
-                }
-                setIsEnabled(!isEnabled);
-              }}
-              className={`min-w-[140px] rounded-xl transition-all ${isEnabled ? 'shadow-lg shadow-blue-200' : ''
-                }`}
-              disabled={loading}
-            >
-              {loading ? (
-                <span className="flex items-center gap-2">
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  جاري التحديد...
-                </span>
-              ) : isEnabled ? (
-                <span className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4" />
-                  مفعل
-                </span>
-              ) : (
-                <span className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4" />
-                  تحديد موقعي
-                </span>
-              )}
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 export const ServicesPage: React.FC = () => {
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -120,12 +21,43 @@ export const ServicesPage: React.FC = () => {
   const [filteredClinics, setFilteredClinics] = useState(clinics);
   const { articles, loading: articlesLoading } = useArticles();
 
-  // Sync clinics when loaded, but strictly filter by visibility rules (showOnMap)
+  // Geolocation & Map State
+  const { location, getLocation, calculateDistance, loading: geoLoading, error: geoError } = useGeolocation();
+  const [mapCenter, setMapCenter] = useState({ lat: 33.3152, lng: 44.3661 }); // Iraq Center
+  const [mapZoom, setMapZoom] = useState(6); // Iraq Level Zoom
+
+  // Handle "Locate Me"
+  const handleLocateMe = () => {
+    getLocation();
+  };
+
+  // Update Map and Filter when location is found
   useEffect(() => {
-    // Only show clinics that have explicitly enabled "Show on Map"
-    const visibleClinics = clinics.filter(c => c.settings?.showOnMap === true);
-    setFilteredClinics(visibleClinics);
-  }, [clinics]);
+    if (location) {
+      // 1. Move map and zoom in
+      setMapCenter(location);
+      setMapZoom(12); // City/Province level
+
+      // 2. Filter clinics (Fixed 200km radius)
+      const visibleClinics = clinics.filter(c => c.settings?.showOnMap === true);
+      const nearby = visibleClinics.filter(clinic => {
+        const dist = calculateDistance(
+          location,
+          { lat: clinic.location.lat, lng: clinic.location.lng }
+        );
+        return dist <= 200; // Fixed radius
+      });
+      setFilteredClinics(nearby);
+    }
+  }, [location, clinics]);
+
+  // Sync clinics when loaded (Initial state or general list)
+  useEffect(() => {
+    if (!location) {
+      const visibleClinics = clinics.filter(c => c.settings?.showOnMap === true);
+      setFilteredClinics(visibleClinics);
+    }
+  }, [clinics, location]);
 
   // Handle hash navigation on page load
   useEffect(() => {
@@ -154,8 +86,6 @@ export const ServicesPage: React.FC = () => {
     'جراحة الأسنان', 'تقويم الأسنان', 'علاج الجذور', 'طب الأسنان العام',
     'أمراض اللثة', 'طب أسنان الأطفال', 'التركيبات', 'تجميل الأسنان'
   ];
-
-
 
   // Smart Diagnosis Data
   const diagnosticMethods = [
@@ -188,8 +118,6 @@ export const ServicesPage: React.FC = () => {
       accuracy: '85%'
     }
   ];
-
-
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -254,30 +182,31 @@ export const ServicesPage: React.FC = () => {
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         {activeTab === 'clinics' && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Geolocation Logic */}
-            <NearbyClinicsSettings
-              clinics={clinics}
-              onFilter={setFilteredClinics}
-            />
-
-            {/* Map */}
+            {/* Map Section with Locate Me Button in Header */}
             <Card className="overflow-hidden p-0 border-0 shadow-lg rounded-3xl ring-1 ring-black/5">
-              <div className="p-4 bg-white/80 backdrop-blur-sm border-b border-gray-100 flex justify-between items-center absolute top-0 w-full z-10">
+              <div className="p-4 bg-white/80 backdrop-blur-sm border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4 absolute top-0 w-full z-10">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                  <h3 className="text-sm font-bold text-gray-900">الخريطة التفاعلية</h3>
+                  <h3 className="text-sm font-bold text-gray-900">الخريطة التفاعلية والعيادات القريبة</h3>
                 </div>
-                <Button
-                  onClick={() => setActiveTab('featured-doctors')}
-                  className="flex items-center gap-2 bg-white text-gray-700 hover:bg-gray-50 border border-gray-200 shadow-sm rounded-xl"
-                  size="sm"
-                >
-                  <User className="w-4 h-4 text-purple-600" />
-                  عرض العيادات المميزة
-                </Button>
+                
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={() => setActiveTab('featured-doctors')}
+                    className="flex items-center gap-2 bg-white text-gray-700 hover:bg-gray-50 border border-gray-200 shadow-sm rounded-xl h-10"
+                    size="sm"
+                  >
+                    <Star className="w-3.5 h-3.5 text-purple-600" />
+                    <span className="hidden sm:inline">العيادات المميزة</span>
+                    <span className="sm:hidden text-xs">المميزة</span>
+                  </Button>
+                </div>
               </div>
+              
               <InteractiveMap
                 clinics={filteredClinics}
+                center={mapCenter}
+                zoom={mapZoom}
                 height="500px"
               />
             </Card>

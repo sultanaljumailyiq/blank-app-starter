@@ -41,7 +41,7 @@ export class ErrorBoundary extends Component<Props, State> {
                             نواجه مشكلة في عرض هذه الصفحة. تم تسجيل الخطأ وسنعمل على إصلاحه قريباً.
                         </p>
 
-                        {this.state.error && import.meta.env.DEV && (
+                        {this.state.error && process.env.NODE_ENV === 'development' && (
                             <div className="bg-gray-50 p-4 rounded-lg mb-8 text-left text-xs font-mono text-red-600 overflow-auto max-h-40 border border-gray-200" dir="ltr">
                                 {this.state.error.toString()}
                             </div>

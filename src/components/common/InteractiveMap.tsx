@@ -1,13 +1,17 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from '@react-google-maps/api';
 import { Clinic } from '../../types';
 import { ClinicCard } from '../cards/ClinicCard';
+import { MapPin, Navigation, CheckCircle, RefreshCw } from 'lucide-react';
+import { useGeolocation } from '../../hooks/useGeolocation';
+import { Button } from './Button';
 
 interface InteractiveMapProps {
   clinics: Clinic[];
   center?: { lat: number; lng: number };
   zoom?: number;
   height?: string;
+  onLocationFound?: (location: { lat: number; lng: number }) => void;
 }
 
 const mapContainerStyle = {
@@ -22,11 +26,26 @@ const defaultCenter = {
 
 export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   clinics,
-  center = defaultCenter,
-  zoom = 11,
+  center: initialCenter = defaultCenter,
+  zoom: initialZoom = 6,
   height = '400px',
+  onLocationFound
 }) => {
   const [selectedClinic, setSelectedClinic] = useState<Clinic | null>(null);
+  const { location, getLocation, clearLocation, loading: geoLoading, error: geoError } = useGeolocation();
+  
+  // Local map state to handle "Locate Me" if not controlled by parent
+  const [internalCenter, setInternalCenter] = useState(initialCenter);
+  const [internalZoom, setInternalZoom] = useState(initialZoom);
+
+  // Sync internal state with props
+  useEffect(() => {
+    setInternalCenter(initialCenter);
+  }, [initialCenter]);
+
+  useEffect(() => {
+    setInternalZoom(initialZoom);
+  }, [initialZoom]);
 
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
@@ -42,6 +61,18 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   const onMarkerClick = useCallback((clinic: Clinic) => {
     setSelectedClinic(clinic);
   }, []);
+
+  const handleLocateMe = () => {
+    getLocation();
+  };
+
+  useEffect(() => {
+    if (location) {
+      setInternalCenter(location);
+      setInternalZoom(12);
+      if (onLocationFound) onLocationFound(location);
+    }
+  }, [location, onLocationFound]);
 
   if (loadError) {
     return (
@@ -60,7 +91,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   }
 
   return (
-    <div style={{ height }}>
+    <div style={{ height }} className="relative group">
       {/* Custom Styles for Map to hide default close button and customize scroll */}
       <style>{`
         .gm-ui-hover-effect {
@@ -75,11 +106,47 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         }
       `}</style>
 
+      {/* Floating Locate Me Button - Positioned TOP-LEFT */}
+      <div className="absolute top-4 left-4 z-10 flex flex-col items-start gap-2">
+        <Button
+          variant={location ? 'primary' : 'outline'}
+          size="sm"
+          onClick={() => {
+            if (location) {
+              // Toggle off: clear location and reset map
+              clearLocation();
+              setInternalCenter(initialCenter);
+              setInternalZoom(initialZoom);
+            } else {
+              handleLocateMe();
+            }
+          }}
+          disabled={geoLoading}
+          className={`rounded-xl w-10 h-10 p-0 flex items-center justify-center transition-all bg-white/90 backdrop-blur-md border-gray-200 shadow-lg group hover:scale-110 ${
+            location ? 'ring-2 ring-blue-400 border-blue-400 bg-blue-50' : ''
+          }`}
+          title="تحديد موقعي"
+        >
+          {geoLoading ? (
+            <RefreshCw className="w-5 h-5 animate-spin text-blue-600" />
+          ) : location ? (
+            <MapPin className="w-5 h-5 text-blue-600 fill-blue-50" />
+          ) : (
+            <Navigation className="w-5 h-5 text-gray-600 group-hover:text-blue-600" />
+          )}
+        </Button>
+        {geoError && (
+          <div className="bg-red-50 text-red-500 text-[10px] p-2 rounded-lg border border-red-100 font-bold shadow-sm max-w-[150px] text-center">
+            {geoError}
+          </div>
+        )}
+      </div>
+
       {/* @ts-ignore */}
       <GoogleMap
         mapContainerStyle={mapContainerStyle}
-        center={center}
-        zoom={zoom}
+        center={internalCenter}
+        zoom={internalZoom}
         onClick={onMapClick}
         options={{
           zoomControl: true,
@@ -88,6 +155,21 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
           fullscreenControl: true,
         }}
       >
+        {/* User Location Marker */}
+        {location && (
+          <Marker
+            position={location}
+            icon={{
+              path: (window as any).google?.maps?.SymbolPath?.CIRCLE || 0,
+              scale: 7,
+              fillColor: '#22c55e', // Green for user
+              fillOpacity: 1,
+              strokeColor: '#ffffff',
+              strokeWeight: 2,
+            }}
+            zIndex={1000}
+          />
+        )}
         {clinics.map((clinic) => (
           // @ts-ignore
           <Marker

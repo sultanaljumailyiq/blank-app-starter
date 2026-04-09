@@ -77,9 +77,18 @@ export const useGeolocation = () => {
         return deg * (Math.PI / 180);
     };
 
+    const clearLocation = () => {
+        setState({
+            location: null,
+            error: null,
+            loading: false,
+        });
+    };
+
     return {
         ...state,
         getLocation,
+        clearLocation,
         calculateDistance,
     };
 };

@@ -93,23 +93,12 @@ export const ClinicDashboard: React.FC = () => {
     );
   }
 
-  // Handle not found state
+  // Handle not found state (Redirect to clinics if unauthorized/not found)
   if (!clinic) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-blue-50">
-        <div className="text-center">
-          <Building2 className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">العيادة غير موجودة</h1>
-          <p className="text-gray-600 mb-6">لم يتم العثور على عيادة بهذا المعرف</p>
-          <button
-            onClick={() => navigate('/doctor')}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            العودة للرئيسية
-          </button>
-        </div>
-      </div>
-    );
+    if (!loading) {
+      setTimeout(() => navigate('/doctor/clinics', { replace: true }), 0);
+    }
+    return null;
   }
 
   /* 
