@@ -1,10 +1,10 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ErrorBoundary } from './components/common/ErrorBoundary.tsx'
-import { OfflineIndicator } from './components/common/OfflineIndicator.tsx'
-import { PWAInstallPrompt } from './components/common/PWAInstallPrompt.tsx'
+import { ErrorBoundary } from './components/common/ErrorBoundary'
+import { OfflineIndicator } from './components/common/OfflineIndicator'
+import { PWAInstallPrompt } from './components/common/PWAInstallPrompt'
 import './index.css'
-import App from './App.tsx'
+import App from './App'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
