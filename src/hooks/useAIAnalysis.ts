@@ -152,11 +152,29 @@ export const useAIAnalysis = (patientId?: string, clinicId?: number) => {
         return data;
     };
 
+    const fileToBase64 = (file: File): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const result = reader.result as string;
+                // Remove data URL prefix to get raw base64
+                const base64 = result.split(',')[1];
+                resolve(base64);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+    };
+
     const analyzeImage = async (file: File, overridePatientId?: number) => {
         if (!user) return;
         setUploading(true);
         try {
-            // 1. Upload Image to Storage
+            // 1. Convert image to base64 for AI analysis
+            const base64Data = await fileToBase64(file);
+            const mimeType = file.type || 'image/jpeg';
+
+            // 2. Upload Image to Storage (for history/display)
             const filename = `ai/${user.id}/${Date.now()}_${file.name}`;
             const { error: uploadError } = await supabase.storage
                 .from('patient-docs')
@@ -168,19 +186,18 @@ export const useAIAnalysis = (patientId?: string, clinicId?: number) => {
             setUploading(false);
             setAnalyzing(true);
 
-            // 2. Create DB Entry (Processing)
+            // 3. Create DB Entry (Processing)
             const analysisEntry = await saveAnalysisToHistory(publicUrl, 'processing', undefined, overridePatientId);
 
-            // Update UI immediately
             if (analysisEntry) {
                 setHistory(prev => [analysisEntry, ...prev]);
             }
 
-            // 3. Trigger AI Service Analysis
+            // 4. Trigger AI Service Analysis with base64
             const resolvedClinicId = await resolveClinicId();
-            const result = await aiService.analyzeImage(publicUrl, undefined, undefined, resolvedClinicId);
+            const result = await aiService.analyzeImage(publicUrl, undefined, undefined, resolvedClinicId, base64Data, mimeType);
 
-            // 4. Update DB Entry (Completed)
+            // 5. Update DB Entry (Completed)
             if (analysisEntry) {
                 const { error: updateError } = await supabase
                     .from('ai_analyses')
@@ -192,14 +209,12 @@ export const useAIAnalysis = (patientId?: string, clinicId?: number) => {
 
                 if (updateError) throw updateError;
 
-                // Update UI with result
                 setHistory(prev => prev.map(item =>
                     item.id === analysisEntry.id
                         ? { ...item, status: 'completed', result_json: result }
                         : item
                 ));
 
-                // Refresh credits after usage
                 fetchCredits();
             }
 
@@ -209,11 +224,27 @@ export const useAIAnalysis = (patientId?: string, clinicId?: number) => {
         } catch (error: any) {
             console.error('Analysis failed:', error);
             toast.error(error.message || 'فشل في عملية التحليل');
-            setUploading(false); // Ensure uploading state is reset on error
+            setUploading(false);
             throw error;
         } finally {
             setAnalyzing(false);
         }
+    };
+
+    const urlToBase64 = async (url: string): Promise<{ base64: string; mimeType: string }> => {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        const mimeType = blob.type || 'image/jpeg';
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const result = reader.result as string;
+                const base64 = result.split(',')[1];
+                resolve({ base64, mimeType });
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
     };
 
     const analyzeExistingImage = async (url: string) => {
@@ -223,17 +254,24 @@ export const useAIAnalysis = (patientId?: string, clinicId?: number) => {
             const targetPatientId = patientId ? parseInt(patientId) : undefined;
             const resolvedClinicId = await resolveClinicId();
 
-            // 1. Create DB Entry (Processing)
-            // saveAnalysisToHistory resolves clinicId internally, so we don't need to pass it unless we want to override?
-            // Actually my previous edit made saveAnalysisToHistory call resolveClinicId.
             const analysisEntry = await saveAnalysisToHistory(url, 'processing', undefined, targetPatientId);
 
             if (analysisEntry) {
                 setHistory(prev => [analysisEntry, ...prev]);
             }
 
-            // 2. Trigger AI Service Analysis
-            const result = await aiService.analyzeImage(url, undefined, undefined, resolvedClinicId);
+            // Convert URL image to base64 for AI analysis
+            let base64Data: string | undefined;
+            let mimeType: string | undefined;
+            try {
+                const converted = await urlToBase64(url);
+                base64Data = converted.base64;
+                mimeType = converted.mimeType;
+            } catch (e) {
+                console.warn('Could not convert image to base64, falling back to URL:', e);
+            }
+
+            const result = await aiService.analyzeImage(url, undefined, undefined, resolvedClinicId, base64Data, mimeType);
 
             // 3. Update DB
             if (analysisEntry) {

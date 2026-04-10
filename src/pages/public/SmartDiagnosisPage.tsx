@@ -70,7 +70,11 @@ export const SmartDiagnosisPage: React.FC = () => {
       try {
         let response: string;
         if (currentImage) {
-          const result = await aiService.analyzeImage(currentImage, userMsg.content, sessionId);
+          // Extract base64 and mime type from data URL
+          const match = currentImage.match(/^data:(image\/[^;]+);base64,(.+)$/);
+          const base64Data = match ? match[2] : undefined;
+          const mimeType = match ? match[1] : undefined;
+          const result = await aiService.analyzeImage(currentImage, userMsg.content, sessionId, undefined, base64Data, mimeType);
 
           let analysisText = `**نتائج تحليل الصورة:**\n\n`;
           analysisText += `**التشخيص:** ${result.diagnosis || result.summary}\n`;
