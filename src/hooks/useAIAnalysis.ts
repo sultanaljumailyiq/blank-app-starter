@@ -231,6 +231,22 @@ export const useAIAnalysis = (patientId?: string, clinicId?: number) => {
         }
     };
 
+    const urlToBase64 = async (url: string): Promise<{ base64: string; mimeType: string }> => {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        const mimeType = blob.type || 'image/jpeg';
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const result = reader.result as string;
+                const base64 = result.split(',')[1];
+                resolve({ base64, mimeType });
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    };
+
     const analyzeExistingImage = async (url: string) => {
         if (!user) return;
         setAnalyzing(true);
@@ -238,17 +254,24 @@ export const useAIAnalysis = (patientId?: string, clinicId?: number) => {
             const targetPatientId = patientId ? parseInt(patientId) : undefined;
             const resolvedClinicId = await resolveClinicId();
 
-            // 1. Create DB Entry (Processing)
-            // saveAnalysisToHistory resolves clinicId internally, so we don't need to pass it unless we want to override?
-            // Actually my previous edit made saveAnalysisToHistory call resolveClinicId.
             const analysisEntry = await saveAnalysisToHistory(url, 'processing', undefined, targetPatientId);
 
             if (analysisEntry) {
                 setHistory(prev => [analysisEntry, ...prev]);
             }
 
-            // 2. Trigger AI Service Analysis
-            const result = await aiService.analyzeImage(url, undefined, undefined, resolvedClinicId);
+            // Convert URL image to base64 for AI analysis
+            let base64Data: string | undefined;
+            let mimeType: string | undefined;
+            try {
+                const converted = await urlToBase64(url);
+                base64Data = converted.base64;
+                mimeType = converted.mimeType;
+            } catch (e) {
+                console.warn('Could not convert image to base64, falling back to URL:', e);
+            }
+
+            const result = await aiService.analyzeImage(url, undefined, undefined, resolvedClinicId, base64Data, mimeType);
 
             // 3. Update DB
             if (analysisEntry) {
