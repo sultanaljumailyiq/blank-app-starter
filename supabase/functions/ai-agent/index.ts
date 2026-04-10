@@ -50,6 +50,8 @@ serve(async (req) => {
       agent_type,
       message,
       image_url,
+      image_base64,
+      image_mime_type,
       context,
       session_id,
       clinic_id,

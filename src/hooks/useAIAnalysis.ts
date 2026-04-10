@@ -152,11 +152,29 @@ export const useAIAnalysis = (patientId?: string, clinicId?: number) => {
         return data;
     };
 
+    const fileToBase64 = (file: File): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const result = reader.result as string;
+                // Remove data URL prefix to get raw base64
+                const base64 = result.split(',')[1];
+                resolve(base64);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+    };
+
     const analyzeImage = async (file: File, overridePatientId?: number) => {
         if (!user) return;
         setUploading(true);
         try {
-            // 1. Upload Image to Storage
+            // 1. Convert image to base64 for AI analysis
+            const base64Data = await fileToBase64(file);
+            const mimeType = file.type || 'image/jpeg';
+
+            // 2. Upload Image to Storage (for history/display)
             const filename = `ai/${user.id}/${Date.now()}_${file.name}`;
             const { error: uploadError } = await supabase.storage
                 .from('patient-docs')
@@ -168,19 +186,18 @@ export const useAIAnalysis = (patientId?: string, clinicId?: number) => {
             setUploading(false);
             setAnalyzing(true);
 
-            // 2. Create DB Entry (Processing)
+            // 3. Create DB Entry (Processing)
             const analysisEntry = await saveAnalysisToHistory(publicUrl, 'processing', undefined, overridePatientId);
 
-            // Update UI immediately
             if (analysisEntry) {
                 setHistory(prev => [analysisEntry, ...prev]);
             }
 
-            // 3. Trigger AI Service Analysis
+            // 4. Trigger AI Service Analysis with base64
             const resolvedClinicId = await resolveClinicId();
-            const result = await aiService.analyzeImage(publicUrl, undefined, undefined, resolvedClinicId);
+            const result = await aiService.analyzeImage(publicUrl, undefined, undefined, resolvedClinicId, base64Data, mimeType);
 
-            // 4. Update DB Entry (Completed)
+            // 5. Update DB Entry (Completed)
             if (analysisEntry) {
                 const { error: updateError } = await supabase
                     .from('ai_analyses')
@@ -192,14 +209,12 @@ export const useAIAnalysis = (patientId?: string, clinicId?: number) => {
 
                 if (updateError) throw updateError;
 
-                // Update UI with result
                 setHistory(prev => prev.map(item =>
                     item.id === analysisEntry.id
                         ? { ...item, status: 'completed', result_json: result }
                         : item
                 ));
 
-                // Refresh credits after usage
                 fetchCredits();
             }
 
@@ -209,7 +224,7 @@ export const useAIAnalysis = (patientId?: string, clinicId?: number) => {
         } catch (error: any) {
             console.error('Analysis failed:', error);
             toast.error(error.message || 'فشل في عملية التحليل');
-            setUploading(false); // Ensure uploading state is reset on error
+            setUploading(false);
             throw error;
         } finally {
             setAnalyzing(false);

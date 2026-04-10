@@ -235,20 +235,28 @@ class AIService {
         return response.json();
     }
 
-    async analyzeImage(imageUrl: string, context?: string, sessionId?: string, clinicId?: number): Promise<AIAnalysisResult> {
+    async analyzeImage(imageUrl: string, context?: string, sessionId?: string, clinicId?: number, base64Data?: string, mimeType?: string): Promise<AIAnalysisResult> {
         if (!this.initialized) await this.loadConfigs();
 
         const config = this.getConfig('image_analysis');
         if (!config.isActive) throw new Error('خدمة تحليل الصور غير مفعلة');
 
         try {
-            const data = await this.callEdgeFunction({
+            const payload: Record<string, any> = {
                 agent_type: 'image_analysis',
                 image_url: imageUrl,
                 message: context || 'حلل هذه الصورة السنية بدقة وأعط تقريراً تفصيلياً.',
                 session_id: sessionId,
                 clinic_id: clinicId,
-            });
+            };
+
+            // Send base64 data if available (preferred method)
+            if (base64Data) {
+                payload.image_base64 = base64Data;
+                payload.image_mime_type = mimeType || 'image/jpeg';
+            }
+
+            const data = await this.callEdgeFunction(payload);
 
             if (data.result) {
                 return {
@@ -263,7 +271,6 @@ class AIService {
                 };
             }
 
-            // Parse from raw text
             return {
                 issues: [],
                 summary: data.raw || 'تم التحليل',
