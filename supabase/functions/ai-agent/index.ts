@@ -106,18 +106,28 @@ serve(async (req) => {
     }
 
     // Add current user message
-    if (agent_type === "image_analysis" && image_url) {
-      // Vision request: include image as base64 or URL
+    if (agent_type === "image_analysis" && (image_base64 || image_url)) {
+      // Vision request: use inline base64 data (preferred) or URL fallback
       const userContent: any[] = [];
       if (message) {
         userContent.push({ type: "text", text: message });
       } else {
         userContent.push({ type: "text", text: "حلل هذه الصورة السنية بدقة وأعط تقريراً تفصيلياً." });
       }
-      userContent.push({
-        type: "image_url",
-        image_url: { url: image_url },
-      });
+
+      if (image_base64) {
+        // Send as inline base64 data (works reliably with Gemini)
+        const mime = image_mime_type || "image/jpeg";
+        userContent.push({
+          type: "image_url",
+          image_url: { url: `data:${mime};base64,${image_base64}` },
+        });
+      } else {
+        userContent.push({
+          type: "image_url",
+          image_url: { url: image_url },
+        });
+      }
       messages.push({ role: "user", content: userContent });
     } else {
       messages.push({ role: "user", content: message || "" });
