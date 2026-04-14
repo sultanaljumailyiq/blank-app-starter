@@ -1492,8 +1492,6 @@
 
     "@babel/helper-skip-transparent-expression-wrappers/@babel/traverse": ["@babel/traverse@7.29.0", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@babel/traverse/-/traverse-7.29.0.tgz", { "dependencies": { "@babel/code-frame": "^7.29.0", "@babel/generator": "^7.29.0", "@babel/helper-globals": "^7.28.0", "@babel/parser": "^7.29.0", "@babel/template": "^7.28.6", "@babel/types": "^7.29.0", "debug": "^4.3.1" } }, "sha512-4HPiQr0X7+waHfyXPZpWPfWL/J7dcN1mx9gL6WdQVMbPnF3+ZhSMs8tCxN7oHddJE9fhNE7+lxdnlyemKfJRuA=="],
 
-    "@babel/helper-skip-transparent-expression-wrappers/@babel/types": ["@babel/types@7.29.0", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@babel/types/-/types-7.29.0.tgz", { "dependencies": { "@babel/helper-string-parser": "^7.27.1", "@babel/helper-validator-identifier": "^7.28.5" } }, "sha512-LwdZHpScM4Qz8Xw2iKSzS+cfglZzJGvofQICy7W7v4caru4EaAmyUuO6BGrbyQ2mYV11W0U8j5mBhd14dd3B0A=="],
-
     "@babel/helper-wrap-function/@babel/traverse": ["@babel/traverse@7.29.0", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@babel/traverse/-/traverse-7.29.0.tgz", { "dependencies": { "@babel/code-frame": "^7.29.0", "@babel/generator": "^7.29.0", "@babel/helper-globals": "^7.28.0", "@babel/parser": "^7.29.0", "@babel/template": "^7.28.6", "@babel/types": "^7.29.0", "debug": "^4.3.1" } }, "sha512-4HPiQr0X7+waHfyXPZpWPfWL/J7dcN1mx9gL6WdQVMbPnF3+ZhSMs8tCxN7oHddJE9fhNE7+lxdnlyemKfJRuA=="],
 
     "@babel/helper-wrap-function/@babel/types": ["@babel/types@7.29.0", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@babel/types/-/types-7.29.0.tgz", { "dependencies": { "@babel/helper-string-parser": "^7.27.1", "@babel/helper-validator-identifier": "^7.28.5" } }, "sha512-LwdZHpScM4Qz8Xw2iKSzS+cfglZzJGvofQICy7W7v4caru4EaAmyUuO6BGrbyQ2mYV11W0U8j5mBhd14dd3B0A=="],
@@ -1505,6 +1503,8 @@
     "@babel/plugin-transform-classes/@babel/traverse": ["@babel/traverse@7.29.0", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@babel/traverse/-/traverse-7.29.0.tgz", { "dependencies": { "@babel/code-frame": "^7.29.0", "@babel/generator": "^7.29.0", "@babel/helper-globals": "^7.28.0", "@babel/parser": "^7.29.0", "@babel/template": "^7.28.6", "@babel/types": "^7.29.0", "debug": "^4.3.1" } }, "sha512-4HPiQr0X7+waHfyXPZpWPfWL/J7dcN1mx9gL6WdQVMbPnF3+ZhSMs8tCxN7oHddJE9fhNE7+lxdnlyemKfJRuA=="],
 
     "@babel/plugin-transform-destructuring/@babel/traverse": ["@babel/traverse@7.29.0", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@babel/traverse/-/traverse-7.29.0.tgz", { "dependencies": { "@babel/code-frame": "^7.29.0", "@babel/generator": "^7.29.0", "@babel/helper-globals": "^7.28.0", "@babel/parser": "^7.29.0", "@babel/template": "^7.28.6", "@babel/types": "^7.29.0", "debug": "^4.3.1" } }, "sha512-4HPiQr0X7+waHfyXPZpWPfWL/J7dcN1mx9gL6WdQVMbPnF3+ZhSMs8tCxN7oHddJE9fhNE7+lxdnlyemKfJRuA=="],
+
+    "@babel/plugin-transform-function-name/@babel/traverse": ["@babel/traverse@7.29.0", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@babel/traverse/-/traverse-7.29.0.tgz", { "dependencies": { "@babel/code-frame": "^7.29.0", "@babel/generator": "^7.29.0", "@babel/helper-globals": "^7.28.0", "@babel/parser": "^7.29.0", "@babel/template": "^7.28.6", "@babel/types": "^7.29.0", "debug": "^4.3.1" } }, "sha512-4HPiQr0X7+waHfyXPZpWPfWL/J7dcN1mx9gL6WdQVMbPnF3+ZhSMs8tCxN7oHddJE9fhNE7+lxdnlyemKfJRuA=="],
 
     "@babel/plugin-transform-modules-systemjs/@babel/traverse": ["@babel/traverse@7.29.0", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@babel/traverse/-/traverse-7.29.0.tgz", { "dependencies": { "@babel/code-frame": "^7.29.0", "@babel/generator": "^7.29.0", "@babel/helper-globals": "^7.28.0", "@babel/parser": "^7.29.0", "@babel/template": "^7.28.6", "@babel/types": "^7.29.0", "debug": "^4.3.1" } }, "sha512-4HPiQr0X7+waHfyXPZpWPfWL/J7dcN1mx9gL6WdQVMbPnF3+ZhSMs8tCxN7oHddJE9fhNE7+lxdnlyemKfJRuA=="],
 
@@ -1588,7 +1588,7 @@
 
     "micromatch/picomatch": ["picomatch@2.3.1", "", {}, "sha512-JU3teHTNjmE2VCGFzuY8EXzCDVwEqB2a8fsIvwaStHhAWJEeVd1o1QD80CU6+ZdEXXSLbSsuLwJjkCBWqRQUVA=="],
 
-    "path-scurry/lru-cache": ["lru-cache@11.3.3", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/lru-cache/-/lru-cache-11.3.3.tgz", {}, "sha512-JvNw9Y81y33E+BEYPr0U7omo+U9AySnsMsEiXgwT6yqd31VQWTLNQqmT4ou5eqPFUrTfIDFta2wKhB1hyohtAQ=="],
+    "path-scurry/lru-cache": ["lru-cache@11.3.5", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/lru-cache/-/lru-cache-11.3.5.tgz", {}, "sha512-NxVFwLAnrd9i7KUBxC4DrUhmgjzOs+1Qm50D3oF1/oL+r1NpZ4gA7xvG0/zJ8evR7zIKn4vLf7qTNduWFtCrRw=="],
 
     "prop-types/react-is": ["react-is@16.13.1", "", {}, "sha512-24e6ynE2H+OKt4kqsOvNd8kBpV65zoxbA4BVsEOB3ARVWQki/DHzaUoC5KuON/BiccDaCCTZBuOcfZs70kR8bQ=="],
 
@@ -1644,6 +1644,8 @@
 
     "@babel/helper-skip-transparent-expression-wrappers/@babel/traverse/@babel/parser": ["@babel/parser@7.29.2", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@babel/parser/-/parser-7.29.2.tgz", { "dependencies": { "@babel/types": "^7.29.0" }, "bin": "./bin/babel-parser.js" }, "sha512-4GgRzy/+fsBa72/RZVJmGKPmZu9Byn8o4MoLpmNe1m8ZfYnz5emHLQz3U4gLud6Zwl0RZIcgiLD7Uq7ySFuDLA=="],
 
+    "@babel/helper-skip-transparent-expression-wrappers/@babel/traverse/@babel/types": ["@babel/types@7.29.0", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@babel/types/-/types-7.29.0.tgz", { "dependencies": { "@babel/helper-string-parser": "^7.27.1", "@babel/helper-validator-identifier": "^7.28.5" } }, "sha512-LwdZHpScM4Qz8Xw2iKSzS+cfglZzJGvofQICy7W7v4caru4EaAmyUuO6BGrbyQ2mYV11W0U8j5mBhd14dd3B0A=="],
+
     "@babel/helper-wrap-function/@babel/traverse/@babel/code-frame": ["@babel/code-frame@7.29.0", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@babel/code-frame/-/code-frame-7.29.0.tgz", { "dependencies": { "@babel/helper-validator-identifier": "^7.28.5", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-9NhCeYjq9+3uxgdtp20LSiJXJvN0FeCtNGpJxuMFZ1Kv3cWUNb6DOhJwUvcVCzKGR66cw4njwM6hrJLqgOwbcw=="],
 
     "@babel/helper-wrap-function/@babel/traverse/@babel/generator": ["@babel/generator@7.29.1", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@babel/generator/-/generator-7.29.1.tgz", { "dependencies": { "@babel/parser": "^7.29.0", "@babel/types": "^7.29.0", "@jridgewell/gen-mapping": "^0.3.12", "@jridgewell/trace-mapping": "^0.3.28", "jsesc": "^3.0.2" } }, "sha512-qsaF+9Qcm2Qv8SRIMMscAvG4O3lJ0F1GuMo5HR/Bp02LopNgnZBC/EkbevHFeGs4ls/oPz9v+Bsmzbkbe+0dUw=="],
@@ -1681,6 +1683,14 @@
     "@babel/plugin-transform-destructuring/@babel/traverse/@babel/parser": ["@babel/parser@7.29.2", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@babel/parser/-/parser-7.29.2.tgz", { "dependencies": { "@babel/types": "^7.29.0" }, "bin": "./bin/babel-parser.js" }, "sha512-4GgRzy/+fsBa72/RZVJmGKPmZu9Byn8o4MoLpmNe1m8ZfYnz5emHLQz3U4gLud6Zwl0RZIcgiLD7Uq7ySFuDLA=="],
 
     "@babel/plugin-transform-destructuring/@babel/traverse/@babel/types": ["@babel/types@7.29.0", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@babel/types/-/types-7.29.0.tgz", { "dependencies": { "@babel/helper-string-parser": "^7.27.1", "@babel/helper-validator-identifier": "^7.28.5" } }, "sha512-LwdZHpScM4Qz8Xw2iKSzS+cfglZzJGvofQICy7W7v4caru4EaAmyUuO6BGrbyQ2mYV11W0U8j5mBhd14dd3B0A=="],
+
+    "@babel/plugin-transform-function-name/@babel/traverse/@babel/code-frame": ["@babel/code-frame@7.29.0", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@babel/code-frame/-/code-frame-7.29.0.tgz", { "dependencies": { "@babel/helper-validator-identifier": "^7.28.5", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-9NhCeYjq9+3uxgdtp20LSiJXJvN0FeCtNGpJxuMFZ1Kv3cWUNb6DOhJwUvcVCzKGR66cw4njwM6hrJLqgOwbcw=="],
+
+    "@babel/plugin-transform-function-name/@babel/traverse/@babel/generator": ["@babel/generator@7.29.1", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@babel/generator/-/generator-7.29.1.tgz", { "dependencies": { "@babel/parser": "^7.29.0", "@babel/types": "^7.29.0", "@jridgewell/gen-mapping": "^0.3.12", "@jridgewell/trace-mapping": "^0.3.28", "jsesc": "^3.0.2" } }, "sha512-qsaF+9Qcm2Qv8SRIMMscAvG4O3lJ0F1GuMo5HR/Bp02LopNgnZBC/EkbevHFeGs4ls/oPz9v+Bsmzbkbe+0dUw=="],
+
+    "@babel/plugin-transform-function-name/@babel/traverse/@babel/parser": ["@babel/parser@7.29.2", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@babel/parser/-/parser-7.29.2.tgz", { "dependencies": { "@babel/types": "^7.29.0" }, "bin": "./bin/babel-parser.js" }, "sha512-4GgRzy/+fsBa72/RZVJmGKPmZu9Byn8o4MoLpmNe1m8ZfYnz5emHLQz3U4gLud6Zwl0RZIcgiLD7Uq7ySFuDLA=="],
+
+    "@babel/plugin-transform-function-name/@babel/traverse/@babel/types": ["@babel/types@7.29.0", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@babel/types/-/types-7.29.0.tgz", { "dependencies": { "@babel/helper-string-parser": "^7.27.1", "@babel/helper-validator-identifier": "^7.28.5" } }, "sha512-LwdZHpScM4Qz8Xw2iKSzS+cfglZzJGvofQICy7W7v4caru4EaAmyUuO6BGrbyQ2mYV11W0U8j5mBhd14dd3B0A=="],
 
     "@babel/plugin-transform-modules-systemjs/@babel/traverse/@babel/code-frame": ["@babel/code-frame@7.29.0", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@babel/code-frame/-/code-frame-7.29.0.tgz", { "dependencies": { "@babel/helper-validator-identifier": "^7.28.5", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-9NhCeYjq9+3uxgdtp20LSiJXJvN0FeCtNGpJxuMFZ1Kv3cWUNb6DOhJwUvcVCzKGR66cw4njwM6hrJLqgOwbcw=="],
 

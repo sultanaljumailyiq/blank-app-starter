@@ -31,22 +31,22 @@ export const Modal: React.FC<ModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-fade-in">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 animate-fade-in">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={onClose}
       />
 
-      {/* Modal - Fixed Height Integration */}
+      {/* Modal - Mobile-first responsive */}
       <div className={cn(
-        'relative bg-white rounded-2xl shadow-2xl w-full max-h-[85vh] flex flex-col overflow-hidden',
+        'relative bg-white rounded-2xl shadow-2xl w-full max-h-[95vh] sm:max-h-[85vh] flex flex-col overflow-hidden',
         sizes[size]
       )}>
         {/* Header */}
         {title && (
-          <div className="flex items-center justify-between p-6 border-b flex-shrink-0 bg-white z-10">
-            <h2 className="text-xl font-bold text-gray-900">{title}</h2>
+          <div className="flex items-center justify-between p-3 sm:p-6 border-b flex-shrink-0 bg-white z-10">
+            <h2 className="text-base sm:text-xl font-bold text-gray-900">{title}</h2>
             <button
               onClick={onClose}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -57,7 +57,7 @@ export const Modal: React.FC<ModalProps> = ({
         )}
 
         {/* Content */}
-        <div className={cn("p-6 overflow-y-auto flex-1 bg-gray-50/50", contentClassName)}>
+        <div className={cn("p-3 sm:p-6 overflow-y-auto flex-1 min-h-0 bg-gray-50/50", contentClassName)}>
           {children}
         </div>
       </div>

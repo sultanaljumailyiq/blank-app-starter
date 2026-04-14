@@ -3116,8 +3116,8 @@ export const ClinicPatientProfile = () => {
         isOpen={isChatModalOpen}
         onClose={() => setIsChatModalOpen(false)}
         title="المساعد الطبي الذكي"
-        contentClassName="p-0 overflow-hidden flex flex-col h-[65vh]"
-        size="lg"
+        contentClassName="p-0 overflow-hidden flex flex-col h-[70vh] sm:h-[65vh]"
+        size="full"
       >
         <div className="flex-1 flex flex-col h-full overflow-hidden min-h-0">
           <SmartAssistantChat patientId={patient.id} patientName={patient.name} onSave={handleSaveChat} />
