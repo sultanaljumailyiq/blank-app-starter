@@ -154,60 +154,60 @@ export const SmartAssistantChat: React.FC<SmartAssistantChatProps> = ({ patientI
     };
 
     return (
-        <div className="flex flex-col h-full min-h-0 bg-gray-50/50" style={{ height: '100%' }}>
+        <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-gray-50/50">
             {/* Context Header */}
-            <div className="bg-white border-b border-gray-100 p-3 px-4 flex justify-between items-center shadow-sm z-10">
-                <div className="flex items-center gap-3">
-                    {patientName ? (
-                        <div className="flex items-center gap-2 text-sm text-gray-700">
-                            <User className="w-4 h-4 text-blue-500" />
-                            <span>ملف المريض: <b className="text-gray-900">{patientName}</b></span>
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-2 text-sm text-gray-700">
-                            <Bot className="w-4 h-4 text-purple-500" />
-                            <span className="font-bold">المساعد الطبي الذكي</span>
-                        </div>
-                    )}
+            <div className="shrink-0 bg-white border-b border-gray-100 p-3 sm:px-4 shadow-sm z-10">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
+                        {patientName ? (
+                            <div className="flex min-w-0 items-center gap-2 text-sm text-gray-700">
+                                <User className="w-4 h-4 text-blue-500 shrink-0" />
+                                <span className="truncate">ملف المريض: <b className="text-gray-900">{patientName}</b></span>
+                            </div>
+                        ) : (
+                            <div className="flex min-w-0 items-center gap-2 text-sm text-gray-700">
+                                <Bot className="w-4 h-4 text-purple-500 shrink-0" />
+                                <span className="font-bold truncate">المساعد الطبي الذكي</span>
+                            </div>
+                        )}
 
-                    {/* Status Indicator */}
-                    <div className="h-4 w-px bg-gray-200 mx-1"></div>
-                    <div className="flex items-center gap-1.5 bg-gray-50 px-2 py-0.5 rounded-full border border-gray-100">
-                        <div className={`w-2 h-2 rounded-full animate-pulse ${aiService.getConfig('doctor_assistant').provider === 'mock' || !aiService.getConfig('doctor_assistant').apiKey ? 'bg-orange-500' : 'bg-green-500'}`}></div>
-                        <span className="text-[10px] font-medium text-gray-500">
-                            {aiService.getConfig('doctor_assistant').provider === 'mock' || !aiService.getConfig('doctor_assistant').apiKey ? 'Demo Mode' : 'Online'}
-                        </span>
+                        <div className="flex items-center gap-1.5 bg-gray-50 px-2 py-0.5 rounded-full border border-gray-100 shrink-0">
+                            <div className={`w-2 h-2 rounded-full animate-pulse ${aiService.getConfig('doctor_assistant').provider === 'mock' || !aiService.getConfig('doctor_assistant').apiKey ? 'bg-orange-500' : 'bg-green-500'}`}></div>
+                            <span className="text-[10px] font-medium text-gray-500">
+                                {aiService.getConfig('doctor_assistant').provider === 'mock' || !aiService.getConfig('doctor_assistant').apiKey ? 'Demo Mode' : 'Online'}
+                            </span>
+                        </div>
                     </div>
-                </div>
 
-                <div className="flex gap-2">
-                    {onSave && (
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => onSave(messages)}
-                            className="text-xs h-8"
-                        >
-                            <Save className="w-3 h-3 ml-1" />
-                            حفظ المحادثة
-                        </Button>
-                    )}
-                    {patientName && (
-                        <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={handleInjectContext}
-                            className="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 h-8"
-                        >
-                            <FileSpreadsheet className="w-3 h-3 ml-1" />
-                            إرسال بيانات المريض
-                        </Button>
-                    )}
+                    <div className="flex flex-wrap gap-2 sm:justify-end">
+                        {onSave && (
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => onSave(messages)}
+                                className="text-xs h-8"
+                            >
+                                <Save className="w-3 h-3 ml-1" />
+                                حفظ المحادثة
+                            </Button>
+                        )}
+                        {patientName && (
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={handleInjectContext}
+                                className="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 h-8"
+                            >
+                                <FileSpreadsheet className="w-3 h-3 ml-1" />
+                                إرسال بيانات المريض
+                            </Button>
+                        )}
+                    </div>
                 </div>
             </div>
 
             {/* Messages Area */}
-            <div className="flex-1 h-0 overflow-y-auto p-4 space-y-6">
+            <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4 space-y-4 sm:space-y-6">
                 {messages.map((msg) => (
                     <div key={msg.id} className={`flex gap-3 group ${msg.sender === 'user' ? 'flex-row-reverse' : ''}`}>
 
@@ -217,11 +217,10 @@ export const SmartAssistantChat: React.FC<SmartAssistantChatProps> = ({ patientI
                         </div>
 
                         {/* Bubble */}
-                        <div className={`max-w-[80%] space-y-1`}>
+                        <div className="max-w-[88%] sm:max-w-[80%] space-y-1">
                             {/* Attachment Bubble */}
                             {msg.attachment && (
-                                <div className={`mb-2 p-3 rounded-xl border flex items-center gap-3 ${msg.sender === 'user' ? 'bg-blue-600 border-blue-500 text-white' : 'bg-white border-gray-200'
-                                    }`}>
+                                <div className={`mb-2 p-3 rounded-xl border flex items-center gap-3 ${msg.sender === 'user' ? 'bg-blue-600 border-blue-500 text-white' : 'bg-white border-gray-200'}`}>
                                     <div className={`p-2 rounded-lg ${msg.sender === 'user' ? 'bg-white/20' : 'bg-gray-100'}`}>
                                         {msg.attachment.type === 'image' ? <ImageIcon className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
                                     </div>
@@ -239,10 +238,7 @@ export const SmartAssistantChat: React.FC<SmartAssistantChatProps> = ({ patientI
 
                             {/* Text Bubble */}
                             {msg.text && (
-                                <div className={`p-3.5 px-5 rounded-2xl text-sm leading-relaxed shadow-sm whitespace-pre-line ${msg.sender === 'user'
-                                    ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-tr-none'
-                                    : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'
-                                    }`}>
+                                <div className={`p-3.5 px-5 rounded-2xl text-sm leading-relaxed shadow-sm whitespace-pre-line ${msg.sender === 'user' ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-tr-none' : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'}`}>
                                     {msg.text}
                                 </div>
                             )}
@@ -271,14 +267,14 @@ export const SmartAssistantChat: React.FC<SmartAssistantChatProps> = ({ patientI
             </div>
 
             {/* Input Area */}
-            <div className="p-4 bg-white border-t border-gray-100 relative z-20">
+            <div className="shrink-0 p-3 sm:p-4 bg-white border-t border-gray-100 relative z-20">
                 {attachedFile && (
-                    <div className="flex items-center gap-2 mb-3 bg-indigo-50 px-3 py-2 rounded-lg border border-indigo-100 w-fit animate-in fade-in slide-in-from-bottom-2">
-                        <div className="bg-white p-1.5 rounded shadow-sm text-indigo-600">
+                    <div className="flex max-w-full items-center gap-2 mb-3 bg-indigo-50 px-3 py-2 rounded-lg border border-indigo-100 animate-in fade-in slide-in-from-bottom-2">
+                        <div className="bg-white p-1.5 rounded shadow-sm text-indigo-600 shrink-0">
                             {attachedFile.type.startsWith('image/') ? <ImageIcon className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
                         </div>
-                        <span className="text-sm font-medium text-indigo-900 truncate max-w-[200px]">{attachedFile.name}</span>
-                        <button onClick={() => setAttachedFile(null)} className="hover:bg-indigo-100 p-1 rounded-full transition-colors ml-2">
+                        <span className="text-sm font-medium text-indigo-900 truncate flex-1 min-w-0">{attachedFile.name}</span>
+                        <button onClick={() => setAttachedFile(null)} className="hover:bg-indigo-100 p-1 rounded-full transition-colors ml-2 shrink-0">
                             <X className="w-4 h-4 text-indigo-500" />
                         </button>
                     </div>
@@ -289,7 +285,7 @@ export const SmartAssistantChat: React.FC<SmartAssistantChatProps> = ({ patientI
                         variant="ghost"
                         size="sm"
                         onClick={() => fileInputRef.current?.click()}
-                        className="text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors h-10 w-10 p-0 flex items-center justify-center"
+                        className="text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors h-10 w-10 p-0 flex items-center justify-center shrink-0"
                         title="إرفاق ملف"
                     >
                         <Paperclip className="w-5 h-5" />
@@ -324,8 +320,7 @@ export const SmartAssistantChat: React.FC<SmartAssistantChatProps> = ({ patientI
                     <Button
                         onClick={handleSend}
                         disabled={(!input.trim() && !attachedFile) || isTyping}
-                        className={`rounded-xl aspect-square p-0 w-11 h-11 flex items-center justify-center transition-all ${(input.trim() || attachedFile) ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-200' : 'bg-gray-200 text-gray-400'
-                            }`}
+                        className={`rounded-xl aspect-square p-0 w-11 h-11 flex items-center justify-center transition-all ${(input.trim() || attachedFile) ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-200' : 'bg-gray-200 text-gray-400'}`}
                     >
                         <Send className="w-5 h-5 ltr:ml-0.5 rtl:mr-0.5" />
                     </Button>
