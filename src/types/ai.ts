@@ -25,9 +25,15 @@ export interface AIAnalysisResult {
         confidence: number;
         box?: [number, number, number, number];
         description?: string;
+        tooth_number?: string;
+        category?: string;
+        severity?: 'low' | 'medium' | 'high';
+        treatment_suggestion?: string;
     }>;
     summary: string;
     recommendation: string;
+    image_quality?: string;
+    affected_teeth?: string[];
     metadata?: AIAnalysisMetadata;
     // Optional compatibility fields if needed elsewhere
     diagnosis?: string;
