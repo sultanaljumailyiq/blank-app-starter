@@ -242,22 +242,25 @@ serve(async (req) => {
       messages.push(...history);
     }
 
-    // Build request body
+    const hasImage = !!(image_base64 || image_url);
+
+    // Build request body — upgrade to multimodal model whenever an image is attached
     const requestBody: any = {
-      model: agent_type === "image_analysis"
+      model: (agent_type === "image_analysis" || hasImage)
         ? "google/gemini-2.5-pro"
         : "google/gemini-3-flash-preview",
       messages,
       stream: false,
     };
 
-    // Add current user message
-    if (agent_type === "image_analysis" && (image_base64 || image_url)) {
+    // Build user message — multimodal when an image is attached (any agent)
+    if (hasImage) {
       const userContent: any[] = [];
-      userContent.push({
-        type: "text",
-        text: message || "حلل هذه الصورة السنية بدقة عالية. حدد جميع المشاكل المرئية مع تحديد مواقعها بدقة على الصورة باستخدام bounding boxes. استخدم نظام ترقيم FDI للأسنان."
-      });
+      const defaultPrompt = agent_type === "image_analysis"
+        ? "حلل هذه الصورة السنية بدقة عالية. حدد جميع المشاكل المرئية مع تحديد مواقعها بدقة على الصورة باستخدام bounding boxes. استخدم نظام ترقيم FDI للأسنان."
+        : "أرفقت لك صورة. افحصها بدقة وأجبني عما يظهر فيها مع نصائح مناسبة باللغة العربية.";
+
+      userContent.push({ type: "text", text: message || defaultPrompt });
 
       if (image_base64) {
         const mime = image_mime_type || "image/jpeg";
@@ -273,9 +276,11 @@ serve(async (req) => {
       }
       messages.push({ role: "user", content: userContent });
 
-      // Use tool calling for structured output
-      requestBody.tools = [DENTAL_ANALYSIS_TOOL];
-      requestBody.tool_choice = { type: "function", function: { name: "dental_analysis_report" } };
+      // Tool-calling structured output ONLY for the dedicated image_analysis agent
+      if (agent_type === "image_analysis") {
+        requestBody.tools = [DENTAL_ANALYSIS_TOOL];
+        requestBody.tool_choice = { type: "function", function: { name: "dental_analysis_report" } };
+      }
     } else {
       messages.push({ role: "user", content: message || "" });
     }
