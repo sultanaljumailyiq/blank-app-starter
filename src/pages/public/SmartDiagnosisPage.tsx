@@ -21,6 +21,7 @@ export const SmartDiagnosisPage: React.FC = () => {
   const [currentMessage, setCurrentMessage] = useState('');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [sessionId, setSessionId] = useState<string>('');
@@ -55,54 +56,57 @@ export const SmartDiagnosisPage: React.FC = () => {
   };
 
   const handleSendMessage = async () => {
-    if (currentMessage.trim() || selectedImage) {
-      const userMsg = {
-        role: 'user' as const,
-        content: currentMessage,
-        image: imagePreview
-      };
+    if (!currentMessage.trim() && !selectedImage) return;
+    if (isLoading) return;
 
-      setChatMessages(prev => [...prev, userMsg]);
-      setCurrentMessage('');
-      const currentImage = imagePreview;
-      removeImage();
+    const userMsg = {
+      role: 'user' as const,
+      content: currentMessage,
+      image: imagePreview
+    };
 
-      try {
-        let response: string;
-        if (currentImage) {
-          // Extract base64 and mime type from data URL
-          const match = currentImage.match(/^data:(image\/[^;]+);base64,(.+)$/);
-          const base64Data = match ? match[2] : undefined;
-          const mimeType = match ? match[1] : undefined;
-          const result = await aiService.analyzeImage(currentImage, userMsg.content, sessionId, undefined, base64Data, mimeType);
+    setChatMessages(prev => [...prev, userMsg]);
+    setCurrentMessage('');
+    const currentImage = imagePreview;
+    removeImage();
+    setIsLoading(true);
 
-          let analysisText = `**نتائج تحليل الصورة:**\n\n`;
-          analysisText += `**التشخيص:** ${result.diagnosis || result.summary}\n`;
-          analysisText += `**الخطورة:** ${result.severity === 'high' ? 'عالية 🔴' : result.severity === 'medium' ? 'متوسطة 🟡' : 'منخفضة 🟢'}\n`;
-          if (result.findings && result.findings.length > 0) {
-            analysisText += `\n**الملاحظات:**\n${result.findings.map(f => `- ${f}`).join('\n')}\n`;
-          }
-          if (result.recommendation) {
-            analysisText += `\n**التوصية:**\n${result.recommendation}`;
-          }
-          response = analysisText;
-        } else {
-          // Chat Request
-          const responseText = await aiService.chat('patient_assistant', userMsg.content, undefined, undefined, undefined, sessionId); // Pass sessionId
-          response = responseText;
-        }
-
-        setChatMessages(prev => [...prev, {
-          role: 'ai',
-          content: response
-        }]);
-      } catch (error) {
-        console.error('AI Chat Error:', error);
-        setChatMessages(prev => [...prev, {
-          role: 'ai',
-          content: 'عذراً، حدث خطأ أثناء المعالجة. يرجى المحاولة مرة أخرى.'
-        }]);
+    try {
+      // Always route through patient_assistant — it now supports images natively
+      let base64Data: string | undefined;
+      let mimeType: string | undefined;
+      if (currentImage) {
+        const match = currentImage.match(/^data:(image\/[^;]+);base64,(.+)$/);
+        base64Data = match ? match[2] : undefined;
+        mimeType = match ? match[1] : undefined;
       }
+
+      const promptText = userMsg.content?.trim()
+        || (currentImage ? 'افحص هذه الصورة بدقة وأخبرني بما تراه من مشاكل مع نصائح مناسبة.' : '');
+
+      const response = await aiService.chat(
+        'patient_assistant',
+        promptText,
+        undefined,
+        undefined,
+        undefined,
+        sessionId,
+        base64Data,
+        mimeType
+      );
+
+      setChatMessages(prev => [...prev, {
+        role: 'ai',
+        content: response
+      }]);
+    } catch (error) {
+      console.error('AI Chat Error:', error);
+      setChatMessages(prev => [...prev, {
+        role: 'ai',
+        content: 'عذراً، حدث خطأ أثناء المعالجة. يرجى المحاولة مرة أخرى.'
+      }]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
