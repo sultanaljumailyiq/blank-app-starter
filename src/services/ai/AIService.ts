@@ -235,7 +235,15 @@ class AIService {
         return response.json();
     }
 
-    async analyzeImage(imageUrl: string, context?: string, sessionId?: string, clinicId?: number, base64Data?: string, mimeType?: string): Promise<AIAnalysisResult> {
+    async analyzeImage(
+        imageUrl: string,
+        context?: string,
+        sessionId?: string,
+        clinicId?: number,
+        base64Data?: string,
+        mimeType?: string,
+        clinicTreatments?: Array<{ name: string; price: number; category?: string }>
+    ): Promise<AIAnalysisResult> {
         if (!this.initialized) await this.loadConfigs();
 
         const config = this.getConfig('image_analysis');
@@ -256,6 +264,11 @@ class AIService {
                 payload.image_mime_type = mimeType || 'image/jpeg';
             }
 
+            // Send clinic treatments catalog for accurate pricing
+            if (clinicTreatments && clinicTreatments.length > 0) {
+                payload.clinic_treatments_catalog = clinicTreatments;
+            }
+
             const data = await this.callEdgeFunction(payload);
 
             if (data.result) {
@@ -267,8 +280,10 @@ class AIService {
                     severity: data.result.severity,
                     confidence: data.result.confidence,
                     findings: data.result.findings || [],
+                    total_estimated_cost: data.result.total_estimated_cost,
+                    has_clinic_catalog: !!(clinicTreatments && clinicTreatments.length > 0),
                     metadata: { isMock: false, provider: 'lovable-ai', model: 'gemini-2.5-pro' }
-                };
+                } as AIAnalysisResult;
             }
 
             return {

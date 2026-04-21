@@ -29,7 +29,12 @@ export interface AIAnalysisResult {
         category?: string;
         severity?: 'low' | 'medium' | 'high';
         treatment_suggestion?: string;
+        matched_treatment_name?: string;
+        matched_treatment_price?: number;
+        treatment_match_status?: 'matched' | 'manual_pricing_needed';
     }>;
+    total_estimated_cost?: number;
+    has_clinic_catalog?: boolean;
     summary: string;
     recommendation: string;
     image_quality?: string;
