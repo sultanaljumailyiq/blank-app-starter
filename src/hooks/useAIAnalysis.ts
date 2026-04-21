@@ -116,6 +116,28 @@ export const useAIAnalysis = (patientId?: string, clinicId?: number) => {
         }
     };
 
+    const fetchClinicTreatments = async (cid?: number): Promise<Array<{ name: string; price: number; category?: string }> | undefined> => {
+        if (!cid) return undefined;
+        try {
+            const { data, error } = await supabase
+                .from('treatments')
+                .select('name, base_price, category')
+                .eq('clinic_id', cid)
+                .eq('is_active', true);
+            if (error || !data) return undefined;
+            return data
+                .filter((t: any) => t.name && t.base_price != null)
+                .map((t: any) => ({
+                    name: t.name,
+                    price: Number(t.base_price),
+                    category: t.category
+                }));
+        } catch (e) {
+            console.warn('Failed to fetch clinic treatments:', e);
+            return undefined;
+        }
+    };
+
     const resolveClinicId = async (): Promise<number | undefined> => {
         if (clinicId) return clinicId;
 
@@ -195,7 +217,8 @@ export const useAIAnalysis = (patientId?: string, clinicId?: number) => {
 
             // 4. Trigger AI Service Analysis with base64
             const resolvedClinicId = await resolveClinicId();
-            const result = await aiService.analyzeImage(publicUrl, undefined, undefined, resolvedClinicId, base64Data, mimeType);
+            const clinicTreatments = await fetchClinicTreatments(resolvedClinicId);
+            const result = await aiService.analyzeImage(publicUrl, undefined, undefined, resolvedClinicId, base64Data, mimeType, clinicTreatments);
 
             // 5. Update DB Entry (Completed)
             if (analysisEntry) {
@@ -271,7 +294,8 @@ export const useAIAnalysis = (patientId?: string, clinicId?: number) => {
                 console.warn('Could not convert image to base64, falling back to URL:', e);
             }
 
-            const result = await aiService.analyzeImage(url, undefined, undefined, resolvedClinicId, base64Data, mimeType);
+            const clinicTreatments = await fetchClinicTreatments(resolvedClinicId);
+            const result = await aiService.analyzeImage(url, undefined, undefined, resolvedClinicId, base64Data, mimeType, clinicTreatments);
 
             // 3. Update DB
             if (analysisEntry) {
