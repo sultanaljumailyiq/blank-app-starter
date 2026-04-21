@@ -149,6 +149,19 @@ export const SmartDiagnosisPage: React.FC = () => {
                   </div>
                 </div>
               ))}
+              {isLoading && (
+                <div className="mb-4 text-right">
+                  <div className="inline-block p-3 rounded-lg bg-blue-100 text-blue-900">
+                    <Brain className="w-4 h-4 inline ml-2 animate-pulse" />
+                    <span className="mr-2 inline-flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 bg-blue-700 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1.5 h-1.5 bg-blue-700 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-1.5 h-1.5 bg-blue-700 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                      <span className="mr-2 text-xs opacity-70">يحلل الصورة ويكتب الرد...</span>
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Image Preview */}
@@ -191,10 +204,10 @@ export const SmartDiagnosisPage: React.FC = () => {
 
               <Button
                 onClick={handleSendMessage}
-                disabled={!currentMessage.trim() && !selectedImage}
+                disabled={(!currentMessage.trim() && !selectedImage) || isLoading}
                 className="px-4"
               >
-                إرسال
+                {isLoading ? '...' : 'إرسال'}
               </Button>
             </div>
           </Card>
