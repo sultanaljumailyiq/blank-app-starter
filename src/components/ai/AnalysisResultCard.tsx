@@ -262,10 +262,49 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ imageUrl
                                                         {(issue as any).treatment_suggestion}
                                                     </p>
                                                 )}
+                                                {/* Matched treatment from clinic catalog */}
+                                                {(issue as any).matched_treatment_name && (issue as any).treatment_match_status === 'matched' ? (
+                                                    <div className="mt-2 pr-7 flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5">
+                                                        <div className="flex items-center gap-1.5 text-[11px] text-emerald-800">
+                                                            <CheckCircle className="w-3.5 h-3.5" />
+                                                            <span className="font-bold">{(issue as any).matched_treatment_name}</span>
+                                                            <span className="text-[9px] bg-emerald-600 text-white px-1.5 py-0.5 rounded">سعر معتمد</span>
+                                                        </div>
+                                                        <span className="text-xs font-bold text-emerald-700 font-mono">
+                                                            {Number((issue as any).matched_treatment_price || 0).toLocaleString('en-US')} د.ع
+                                                        </span>
+                                                    </div>
+                                                ) : ((issue as any).treatment_match_status === 'manual_pricing_needed' && result.has_clinic_catalog) ? (
+                                                    <div className="mt-2 pr-7 flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 text-[11px] text-amber-800">
+                                                        <AlertTriangle className="w-3.5 h-3.5" />
+                                                        <span>يحتاج تسعير يدوي — لا يوجد علاج مطابق في قائمة العيادة</span>
+                                                    </div>
+                                                ) : null}
                                             </li>
                                         );
                                     })}
                                 </ul>
+                                {/* Total cost summary */}
+                                {result.has_clinic_catalog && typeof result.total_estimated_cost === 'number' && result.total_estimated_cost > 0 && (
+                                    <div className="mt-2 flex items-center justify-between bg-gradient-to-l from-emerald-50 to-emerald-100/40 border border-emerald-200 rounded-xl p-3">
+                                        <span className="text-sm font-bold text-emerald-900 flex items-center gap-2">
+                                            <CheckCircle className="w-4 h-4" />
+                                            إجمالي التكلفة التقديرية (من قائمة علاجات العيادة)
+                                        </span>
+                                        <span className="text-base font-extrabold text-emerald-700 font-mono">
+                                            {result.total_estimated_cost.toLocaleString('en-US')} د.ع
+                                        </span>
+                                    </div>
+                                )}
+                                {result.has_clinic_catalog === false && (
+                                    <div className="mt-2 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
+                                        <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                                        <div>
+                                            <p className="font-bold">لم تُعرَّف قائمة علاجات لهذه العيادة.</p>
+                                            <p className="opacity-80">التكاليف غير متاحة. يُرجى إضافة العلاجات من قسم "إدارة العلاجات" لعرض الأسعار تلقائياً.</p>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         ) : (
                             <div className="bg-green-50 p-4 rounded-xl border border-green-100 flex items-center gap-3 text-green-700">
