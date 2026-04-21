@@ -114,6 +114,19 @@ const DENTAL_ANALYSIS_TOOL = {
               treatment_suggestion: {
                 type: "string",
                 description: "Suggested treatment in Arabic"
+              },
+              matched_treatment_name: {
+                type: "string",
+                description: "Exact name of the treatment from clinic_treatments_catalog that best matches this issue. If no good match exists, leave empty."
+              },
+              matched_treatment_price: {
+                type: "number",
+                description: "Exact price (number only, no currency) from clinic_treatments_catalog for the matched treatment. 0 if no match."
+              },
+              treatment_match_status: {
+                type: "string",
+                enum: ["matched", "manual_pricing_needed"],
+                description: "'matched' if a treatment from the catalog was matched, otherwise 'manual_pricing_needed'."
               }
             },
             required: ["label", "tooth_number", "category", "confidence", "severity", "description", "box"]
@@ -132,6 +145,10 @@ const DENTAL_ANALYSIS_TOOL = {
           type: "array",
           items: { type: "string" },
           description: "List of affected tooth numbers using FDI system"
+        },
+        total_estimated_cost: {
+          type: "number",
+          description: "Sum of matched_treatment_price across all issues with treatment_match_status='matched'. 0 if no catalog provided."
         }
       },
       required: ["diagnosis", "severity", "confidence", "summary", "issues", "findings", "recommendation"]
@@ -166,6 +183,7 @@ serve(async (req) => {
       context,
       session_id,
       clinic_id,
+      clinic_treatments_catalog,
       history = [],
     } = body;
 
@@ -205,8 +223,16 @@ serve(async (req) => {
     }
 
     // --- Build messages array ---
+    let catalogInjection = "";
+    if (agent_type === "image_analysis" && Array.isArray(clinic_treatments_catalog) && clinic_treatments_catalog.length > 0) {
+      catalogInjection = `\n\n## CLINIC TREATMENT CATALOG (use ONLY these for cost estimation)\nThis clinic has the following authorized treatments and prices (in clinic's local currency, IQD). For each issue you detect, you MUST select the most appropriate treatment from this list and set:\n- matched_treatment_name = the EXACT name from this catalog\n- matched_treatment_price = the EXACT price from this catalog\n- treatment_match_status = "matched"\n\nIf no treatment in the catalog matches the issue, set matched_treatment_name="", matched_treatment_price=0, and treatment_match_status="manual_pricing_needed".\n\nDO NOT invent prices. DO NOT use prices outside this catalog. Compute total_estimated_cost as the sum of matched_treatment_price for issues with status="matched".\n\nCATALOG: ${JSON.stringify(clinic_treatments_catalog)}`;
+    } else if (agent_type === "image_analysis") {
+      catalogInjection = `\n\n## NO CLINIC CATALOG PROVIDED\nNo clinic treatment catalog was provided. For every issue, set matched_treatment_name="", matched_treatment_price=0, and treatment_match_status="manual_pricing_needed". Set total_estimated_cost=0.`;
+    }
+
     const systemContent =
       systemRules +
+      catalogInjection +
       (context ? `\n\nبيانات السياق: ${JSON.stringify(context, null, 2)}` : "");
 
     const messages: any[] = [{ role: "system", content: systemContent }];
