@@ -299,20 +299,36 @@ class AIService {
         }
     }
 
-    async chat(agentType: string, message: string, contextObj?: any, userId?: string, clinicId?: string, sessionId?: string): Promise<string> {
+    async chat(
+        agentType: string,
+        message: string,
+        contextObj?: any,
+        userId?: string,
+        clinicId?: string,
+        sessionId?: string,
+        imageBase64?: string,
+        imageMimeType?: string
+    ): Promise<string> {
         if (!this.initialized) await this.loadConfigs();
 
         const config = this.getConfig(agentType);
         if (!config.isActive) return 'نأسف، هذه الخدمة غير مفعلة حالياً.';
 
         try {
-            const data = await this.callEdgeFunction({
+            const payload: Record<string, any> = {
                 agent_type: agentType,
                 message,
                 context: contextObj,
                 session_id: sessionId,
                 clinic_id: clinicId ? parseInt(clinicId) : undefined,
-            });
+            };
+
+            if (imageBase64) {
+                payload.image_base64 = imageBase64;
+                payload.image_mime_type = imageMimeType || 'image/jpeg';
+            }
+
+            const data = await this.callEdgeFunction(payload);
 
             return data.response || data.raw || 'لم يتم تلقي رد.';
         } catch (error: any) {
