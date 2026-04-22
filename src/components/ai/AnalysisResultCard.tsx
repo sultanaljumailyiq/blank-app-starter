@@ -50,10 +50,18 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ imageUrl
     const severityConfig = SEVERITY_CONFIG[overallSeverity];
 
     const getBoxColor = (idx: number) => BOX_COLORS[idx % BOX_COLORS.length];
+    const isReliableBox = (issue: AIAnalysisResult['issues'][number]) => {
+        if (!issue.box || issue.box.length !== 4) return false;
+        const [x, y, width, height] = issue.box;
+        return [x, y, width, height].every(Number.isFinite)
+            && x >= 0 && y >= 0 && width > 0 && height > 0
+            && x + width <= 1 && y + height <= 1
+            && issue.confidence >= 0.7;
+    };
 
     const renderBoundingBoxes = (isZoom = false) => (
         showBoxes && result.issues.map((issue, idx) => {
-            if (!issue.box) return null;
+            if (!isReliableBox(issue)) return null;
             const color = getBoxColor(idx);
             const isHovered = hoveredIssue === idx;
             const baseOpacity = isHovered ? 'opacity-100' : 'opacity-70';
@@ -171,7 +179,7 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ imageUrl
                                 <div className="text-[10px] font-bold text-gray-500 mb-1 flex items-center gap-1">
                                     <Target className="w-3 h-3" /> دليل الألوان
                                 </div>
-                                {result.issues.map((issue, idx) => {
+                                {result.issues.filter(isReliableBox).map((issue, idx) => {
                                     const color = getBoxColor(idx);
                                     return (
                                         <div
