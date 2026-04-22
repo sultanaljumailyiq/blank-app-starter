@@ -179,7 +179,7 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ imageUrl
                                 <div className="text-[10px] font-bold text-gray-500 mb-1 flex items-center gap-1">
                                     <Target className="w-3 h-3" /> دليل الألوان
                                 </div>
-                                {result.issues.map((issue, idx) => {
+                                {result.issues.filter(isReliableBox).map((issue, idx) => {
                                     const color = getBoxColor(idx);
                                     return (
                                         <div
