@@ -17,8 +17,15 @@ Analyze dental radiographic images (panoramic, periapical, bitewing, CBCT, intra
 2. **Systematic Tooth-by-Tooth Examination**: Check each visible tooth using FDI numbering system.
 3. **Pathology Detection**: Identify caries (initial, moderate, deep), periapical lesions, bone loss (horizontal/vertical), root resorption, fractures, impacted teeth, cysts, calculus, and any abnormalities.
 4. **Severity Grading**: Rate each finding as low/medium/high severity.
-5. **Bounding Box Localization**: For EACH detected issue, provide precise normalized bounding box coordinates [x, y, width, height] where values are 0-1 representing percentage of image dimensions. x=left edge, y=top edge, width and height are proportional sizes.
+5. **Bounding Box Localization**: For EACH detected issue, provide precise normalized bounding box coordinates [x, y, width, height] where values are 0-1 representing percentage of the ACTUAL image pixels. x=left edge, y=top edge, width and height are proportional sizes.
 6. **Clinical Recommendations**: Provide specific treatment suggestions for each finding.
+
+## Localization Accuracy Rules
+- Draw the box around the visible abnormal finding itself, NOT the entire tooth unless the whole tooth is abnormal.
+- Before returning, mentally verify every box: left/top must start exactly at the lesion/problem area and width/height must tightly cover it.
+- For caries, box the radiolucent lesion; for periapical disease, box the apical radiolucency; for bone loss, box the affected crestal/vertical bone-loss region.
+- Never use percentages like 25 or 40. Coordinates MUST be raw decimals between 0 and 1 such as 0.25.
+- If the exact site is uncertain because image quality is poor, use a wider but still relevant box and reduce confidence below 0.70.
 
 ## Important Guidelines
 - Be thorough but precise. Don't fabricate findings.
@@ -27,6 +34,42 @@ Analyze dental radiographic images (panoramic, periapical, bitewing, CBCT, intra
 - Provide confidence levels for each finding.
 - Always respond in Arabic.
 - Each issue MUST include a bounding box for visual annotation.`;
+
+const clamp = (value: unknown, min = 0, max = 1) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return min;
+  return Math.min(max, Math.max(min, n));
+};
+
+const normalizeAnalysisResult = (result: any) => {
+  if (!result || typeof result !== "object") return result;
+
+  const issues = Array.isArray(result.issues) ? result.issues : [];
+  result.issues = issues.map((issue: any) => {
+    const rawBox = Array.isArray(issue?.box) ? issue.box : [];
+    let [x, y, width, height] = rawBox.map(Number);
+
+    if ([x, y, width, height].some((n) => Number.isFinite(n) && n > 1)) {
+      x = x / 100;
+      y = y / 100;
+      width = width / 100;
+      height = height / 100;
+    }
+
+    x = clamp(x);
+    y = clamp(y);
+    width = clamp(width, 0.03, 1 - x);
+    height = clamp(height, 0.03, 1 - y);
+
+    return {
+      ...issue,
+      confidence: clamp(issue?.confidence, 0, 1),
+      box: [x, y, width, height],
+    };
+  });
+
+  return result;
+};
 
 const DEFAULT_SYSTEM_RULES: Record<string, string> = {
   image_analysis: IMAGE_ANALYSIS_SYSTEM,
@@ -361,7 +404,7 @@ serve(async (req) => {
       if (choice?.message?.tool_calls?.[0]) {
         try {
           const toolCall = choice.message.tool_calls[0];
-          const parsed = JSON.parse(toolCall.function.arguments);
+          const parsed = normalizeAnalysisResult(JSON.parse(toolCall.function.arguments));
           
           return new Response(
             JSON.stringify({ success: true, type: "analysis", result: parsed, raw: toolCall.function.arguments }),
@@ -377,7 +420,7 @@ serve(async (req) => {
       try {
         const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
         const jsonStr = jsonMatch ? jsonMatch[1] : responseText;
-        const parsed = JSON.parse(jsonStr);
+        const parsed = normalizeAnalysisResult(JSON.parse(jsonStr));
 
         return new Response(
           JSON.stringify({ success: true, type: "analysis", result: parsed, raw: responseText }),
