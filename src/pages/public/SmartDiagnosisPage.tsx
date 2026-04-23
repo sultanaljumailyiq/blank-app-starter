@@ -210,6 +210,26 @@ export const SmartDiagnosisPage: React.FC = () => {
                     )}
 
                     <span className="mr-2 whitespace-pre-wrap">{message.content}</span>
+                    {message.role === 'ai' && (
+                      <button onClick={() => speakText(message.content)} className="block mt-2 text-[11px] text-blue-700 hover:text-blue-900">
+                        <Volume2 className="w-3 h-3 inline ml-1" /> قراءة الرد
+                      </button>
+                    )}
+                    {message.clinics && message.clinics.length > 0 && (
+                      <div className="mt-3 grid gap-2 text-right">
+                        {message.clinics.map((clinic) => (
+                          <div key={clinic.id} className="bg-white/80 border border-blue-200 rounded-lg p-2 text-xs text-gray-800">
+                            <div className="font-bold text-gray-900">{clinic.name}</div>
+                            <div className="flex items-center gap-1 text-gray-500 mt-1"><MapPin className="w-3 h-3" />{(clinic as any).governorate || clinic.address || 'العراق'}</div>
+                            <div className="text-gray-600 mt-1">{clinic.specialties?.slice(0, 2).join('، ')}</div>
+                            <div className="flex gap-2 mt-2">
+                              <Link to={`/clinic/${clinic.id}`} className="text-blue-700 font-bold hover:underline">عرض العيادة</Link>
+                              <Link to={`/booking?clinic=${clinic.id}`} className="text-emerald-700 font-bold hover:underline"><Calendar className="w-3 h-3 inline ml-1" />حجز موعد</Link>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -265,6 +285,15 @@ export const SmartDiagnosisPage: React.FC = () => {
                 placeholder={selectedImage ? "صف الصورة أو اضغط إرسال..." : "اكتب رسالتك هنا..."}
                 className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-right"
               />
+
+              <Button
+                variant="secondary"
+                onClick={toggleListening}
+                className="px-3"
+                title={isListening ? 'إيقاف الاستماع' : 'تحدث صوتياً'}
+              >
+                {isListening ? <Square className="w-5 h-5 text-red-600" /> : <Mic className="w-5 h-5 text-gray-600" />}
+              </Button>
 
               <Button
                 onClick={handleSendMessage}
