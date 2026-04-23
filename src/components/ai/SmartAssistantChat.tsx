@@ -294,14 +294,23 @@ export const SmartAssistantChat: React.FC<SmartAssistantChatProps> = ({ patientI
 
                             {/* Text Bubble */}
                             {msg.text && (
-                                <div className={`p-3.5 px-5 rounded-2xl text-sm leading-relaxed shadow-sm whitespace-pre-line ${msg.sender === 'user' ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-tr-none' : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'}`}>
-                                    {msg.text}
+                                <div className={`p-3.5 px-5 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.sender === 'user' ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-tr-none' : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'}`}>
+                                    {msg.sender === 'bot' ? (
+                                        <div className="prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0 text-inherit">
+                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
+                                        </div>
+                                    ) : msg.text}
                                 </div>
                             )}
 
                             {/* Timestamp */}
                             <p className={`text-[10px] text-gray-400 px-1 ${msg.sender === 'user' ? 'text-left' : 'text-right'}`}>
                                 {msg.timestamp.toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })}
+                                {msg.sender === 'bot' && msg.text && (
+                                    <button onClick={() => speakText(msg.text)} className="mr-2 inline-flex items-center gap-1 text-blue-500 hover:text-blue-700">
+                                        <Volume2 className="w-3 h-3" /> قراءة
+                                    </button>
+                                )}
                             </p>
                         </div>
                     </div>
