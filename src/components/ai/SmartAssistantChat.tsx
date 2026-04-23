@@ -383,6 +383,16 @@ export const SmartAssistantChat: React.FC<SmartAssistantChatProps> = ({ patientI
                     />
 
                     <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={toggleListening}
+                        className={`rounded-xl aspect-square p-0 w-11 h-11 flex items-center justify-center transition-all ${isListening ? 'bg-red-100 text-red-600' : 'text-gray-400 hover:text-indigo-600 hover:bg-indigo-50'}`}
+                        title={isListening ? 'إيقاف الاستماع' : 'إملاء صوتي'}
+                    >
+                        {isListening ? <Square className="w-4 h-4" /> : <Mic className="w-5 h-5" />}
+                    </Button>
+
+                    <Button
                         onClick={handleSend}
                         disabled={(!input.trim() && !attachedFile) || isTyping}
                         className={`rounded-xl aspect-square p-0 w-11 h-11 flex items-center justify-center transition-all ${(input.trim() || attachedFile) ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-200' : 'bg-gray-200 text-gray-400'}`}
