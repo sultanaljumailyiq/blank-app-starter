@@ -117,6 +117,9 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ imageUrl
     const model = result.metadata?.model || 'Demo';
     const overallSeverity = result.severity || 'low';
     const severityConfig = SEVERITY_CONFIG[overallSeverity];
+    const imageQuality = typeof result.image_quality === 'string'
+        ? { rating: result.image_quality, problems: [], retake_recommended: false }
+        : result.image_quality;
 
     const getBoxColor = (idx: number) => BOX_COLORS[idx % BOX_COLORS.length];
     const isReliableBox = (issue: AIAnalysisResult['issues'][number]) => {
@@ -213,14 +216,29 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ imageUrl
                             onClick={() => setIsZoomOpen(true)}
                         >
                             <div className="aspect-[4/3] relative">
-                                <img src={imageUrl} alt="صورة الأشعة" className="w-full h-full object-contain" />
+                                <AccurateImageOverlay imageUrl={imageUrl} alt="صورة الأشعة" onClick={() => setIsZoomOpen(true)}>
                                 {renderBoundingBoxes(false)}
+                                </AccurateImageOverlay>
                                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
                                     <span className="bg-white/90 text-gray-800 px-3 py-1.5 rounded-full text-xs font-bold shadow-lg flex items-center gap-2 backdrop-blur-sm">
                                         <ZoomIn className="w-4 h-4" />
                                         تكبير وعرض التفاصيل
                                     </span>
                                 </div>
+                            </div>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                            <div className="bg-white p-2 rounded-lg border border-gray-100 text-center">
+                                <span className="block text-[10px] text-gray-400">نوع الصورة</span>
+                                <span className="block font-bold text-gray-800 text-xs">{IMAGE_TYPE_LABELS[result.image_type || 'unknown'] || 'غير محدد'}</span>
+                            </div>
+                            <div className="bg-white p-2 rounded-lg border border-gray-100 text-center">
+                                <span className="block text-[10px] text-gray-400">جودة الصورة</span>
+                                <span className="block font-bold text-gray-800 text-xs">
+                                    {QUALITY_LABELS[imageQuality?.rating || ''] || imageQuality?.rating || 'غير محددة'}
+                                    {imageQuality?.retake_recommended ? ' • يفضّل الإعادة' : ''}
+                                </span>
                             </div>
                         </div>
 
