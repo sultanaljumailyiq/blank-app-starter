@@ -423,6 +423,41 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ imageUrl
                             </div>
                         )}
 
+                        {/* Treatment Plan */}
+                        {result.treatment_plan?.phases && result.treatment_plan.phases.length > 0 && (
+                            <div className="space-y-2">
+                                <h4 className="flex items-center gap-2 font-bold text-gray-900 text-sm border-b pb-2">
+                                    <CheckCircle className="w-4 h-4 text-emerald-600" />
+                                    الخطة العلاجية المرحلية
+                                </h4>
+                                <div className="grid gap-2">
+                                    {result.treatment_plan.phases.map((phase, idx) => (
+                                        <div key={idx} className="bg-emerald-50/60 border border-emerald-100 rounded-xl p-3">
+                                            <div className="flex items-center justify-between gap-2 mb-1">
+                                                <span className="font-bold text-sm text-emerald-900">{phase.title}</span>
+                                                <span className="text-[10px] bg-white text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-100">{phase.sessions} جلسة</span>
+                                            </div>
+                                            <p className="text-xs text-emerald-800 leading-5">{phase.description}</p>
+                                            {phase.items?.length > 0 && <p className="text-[11px] text-emerald-700 mt-1">{phase.items.join('، ')}</p>}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Patient Summary */}
+                        {(result.patient_friendly_summary || result.follow_up_schedule || (result.doctor_notes?.length || 0) > 0) && (
+                            <div className="space-y-2">
+                                <h4 className="flex items-center gap-2 font-bold text-gray-900 text-sm border-b pb-2">
+                                    <Info className="w-4 h-4 text-blue-600" />
+                                    ملخص وملاحظات المتابعة
+                                </h4>
+                                {result.patient_friendly_summary && <p className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-blue-900 text-xs leading-6">{result.patient_friendly_summary}</p>}
+                                {result.follow_up_schedule && <p className="bg-gray-50 p-2 rounded-lg text-xs text-gray-700"><b>المتابعة:</b> {result.follow_up_schedule}</p>}
+                                {result.doctor_notes?.map((note, i) => <p key={i} className="bg-amber-50 p-2 rounded-lg text-xs text-amber-800">{note}</p>)}
+                            </div>
+                        )}
+
                         {/* Findings */}
                         {result.findings && result.findings.length > 0 && (
                             <div className="space-y-2">
