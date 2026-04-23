@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Sparkles, Paperclip, X, FileText, Image as ImageIcon, FileSpreadsheet, Save } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { Send, Bot, User, Sparkles, Paperclip, X, FileText, Image as ImageIcon, FileSpreadsheet, Save, Mic, Volume2, Square } from 'lucide-react';
 import { Button } from '../common/Button';
 import { aiService } from '../../services/ai/AIService';
 
@@ -35,9 +37,11 @@ export const SmartAssistantChat: React.FC<SmartAssistantChatProps> = ({ patientI
     const [input, setInput] = useState('');
     const [isTyping, setIsTyping] = useState(false);
     const [attachedFile, setAttachedFile] = useState<File | null>(null);
+    const [isListening, setIsListening] = useState(false);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const recognitionRef = useRef<any>(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -53,6 +57,46 @@ export const SmartAssistantChat: React.FC<SmartAssistantChatProps> = ({ patientI
             setAttachedFile(file);
         }
         e.target.value = '';
+    };
+
+    const fileToDataUrl = (file: File): Promise<{ base64?: string; mimeType?: string }> => new Promise((resolve) => {
+        if (!file.type.startsWith('image/')) return resolve({});
+        const reader = new FileReader();
+        reader.onload = () => {
+            const match = String(reader.result).match(/^data:(image\/[^;]+);base64,(.+)$/);
+            resolve({ mimeType: match?.[1], base64: match?.[2] });
+        };
+        reader.onerror = () => resolve({});
+        reader.readAsDataURL(file);
+    });
+
+    const toggleListening = () => {
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (!SpeechRecognition) return;
+        if (isListening) {
+            recognitionRef.current?.stop();
+            setIsListening(false);
+            return;
+        }
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'ar-IQ';
+        recognition.interimResults = true;
+        recognition.onresult = (event: any) => {
+            const transcript = Array.from(event.results).map((r: any) => r[0]?.transcript).join(' ');
+            setInput(transcript);
+        };
+        recognition.onend = () => setIsListening(false);
+        recognitionRef.current = recognition;
+        setIsListening(true);
+        recognition.start();
+    };
+
+    const speakText = (text: string) => {
+        if (!('speechSynthesis' in window)) return;
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text.replace(/[*_#>`]/g, ''));
+        utterance.lang = 'ar-IQ';
+        window.speechSynthesis.speak(utterance);
     };
 
     const handleInjectContext = async () => {
