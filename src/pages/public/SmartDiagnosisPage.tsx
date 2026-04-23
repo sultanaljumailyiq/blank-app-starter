@@ -136,21 +136,32 @@ export const SmartDiagnosisPage: React.FC = () => {
 
       const promptText = userMsg.content?.trim()
         || (currentImage ? 'افحص هذه الصورة بدقة وأخبرني بما تراه من مشاكل مع نصائح مناسبة.' : '');
+      const recommendations = getRecommendedClinics(promptText);
+      const clinicContext = recommendations.map(c => ({
+        id: c.id,
+        name: c.name,
+        governorate: (c as any).governorate,
+        address: c.address,
+        specialties: c.specialties,
+        booking: (c as any).isDigitalBookingEnabled
+      }));
 
       const response = await aiService.chat(
         'patient_assistant',
         promptText,
-        undefined,
+        { registeredClinics: clinicContext, shouldRecommendClinics: recommendations.length > 0 },
         undefined,
         undefined,
         sessionId,
         base64Data,
-        mimeType
+        mimeType,
+        chatMessages.map(m => ({ role: m.role === 'user' ? 'user' as const : 'assistant' as const, content: m.content })).slice(-10)
       );
 
       setChatMessages(prev => [...prev, {
         role: 'ai',
-        content: response
+        content: response,
+        clinics: recommendations
       }]);
     } catch (error) {
       console.error('AI Chat Error:', error);
