@@ -88,7 +88,24 @@ const AccurateImageOverlay: React.FC<{
     };
 
     return (
-        <div ref={containerRef} className=
+        <div ref={containerRef} className="relative w-full h-full" onClick={onClick}>
+            <img
+                src={imageUrl}
+                alt={alt}
+                className={className}
+                onLoad={(event) => {
+                    const img = event.currentTarget;
+                    setNaturalSize({ width: img.naturalWidth, height: img.naturalHeight });
+                }}
+            />
+            <div className="absolute pointer-events-none" style={overlayStyle}>
+                <div className="relative w-full h-full pointer-events-auto">
+                    {children}
+                </div>
+            </div>
+        </div>
+    );
+};
 
 export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ imageUrl, result, date }) => {
     const [isZoomOpen, setIsZoomOpen] = useState(false);
