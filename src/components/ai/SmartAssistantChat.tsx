@@ -179,8 +179,8 @@ export const SmartAssistantChat: React.FC<SmartAssistantChatProps> = ({ patientI
             const responseText = await aiService.chat(
                 'doctor_assistant',
                 newMessage.text || (attachedFile?.type.startsWith('image/') ? 'حلل الصورة المرفقة ضمن سياق ملف المريض.' : 'حلل الملف المرفق.'),
-                context
-                , undefined,
+                context,
+                undefined,
                 undefined,
                 undefined,
                 imagePayload.base64,
