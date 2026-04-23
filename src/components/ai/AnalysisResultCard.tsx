@@ -351,11 +351,23 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ imageUrl
                                                 {issue.description && (
                                                     <p className="text-xs text-gray-500 mt-1.5 pr-7 leading-5">{issue.description}</p>
                                                 )}
+                                                {((issue as any).clinical_description || (issue as any).evidence_visible || (issue as any).risk_if_untreated) && (
+                                                    <div className="mt-2 pr-7 grid gap-1.5 text-[11px] leading-5">
+                                                        {(issue as any).clinical_description && <p className="bg-gray-50 rounded-md px-2 py-1 text-gray-700"><b>الوصف السريري:</b> {(issue as any).clinical_description}</p>}
+                                                        {(issue as any).evidence_visible && <p className="bg-blue-50 rounded-md px-2 py-1 text-blue-800"><b>الدليل المرئي:</b> {(issue as any).evidence_visible}</p>}
+                                                        {(issue as any).risk_if_untreated && <p className="bg-red-50 rounded-md px-2 py-1 text-red-800"><b>الخطر عند الإهمال:</b> {(issue as any).risk_if_untreated}</p>}
+                                                    </div>
+                                                )}
                                                 {(issue as any).treatment_suggestion && (
                                                     <p className="text-xs text-purple-600 mt-1 pr-7 leading-5 flex items-start gap-1">
                                                         <Sparkles className="w-3 h-3 mt-0.5 shrink-0" />
                                                         {(issue as any).treatment_suggestion}
                                                     </p>
+                                                )}
+                                                {Array.isArray((issue as any).treatment_steps) && (issue as any).treatment_steps.length > 0 && (
+                                                    <ol className="mt-1 pr-10 text-[11px] text-gray-600 leading-5 list-decimal">
+                                                        {(issue as any).treatment_steps.map((step: string, stepIdx: number) => <li key={stepIdx}>{step}</li>)}
+                                                    </ol>
                                                 )}
                                                 {/* Matched treatment from clinic catalog */}
                                                 {(issue as any).matched_treatment_name && (issue as any).treatment_match_status === 'matched' ? (
