@@ -279,6 +279,12 @@ class AIService {
                     diagnosis: data.result.diagnosis,
                     severity: data.result.severity,
                     confidence: data.result.confidence,
+                    image_type: data.result.image_type,
+                    image_quality: data.result.image_quality,
+                    treatment_plan: data.result.treatment_plan,
+                    doctor_notes: data.result.doctor_notes,
+                    patient_friendly_summary: data.result.patient_friendly_summary,
+                    follow_up_schedule: data.result.follow_up_schedule,
                     findings: data.result.findings || [],
                     total_estimated_cost: data.result.total_estimated_cost,
                     has_clinic_catalog: !!(clinicTreatments && clinicTreatments.length > 0),
@@ -307,7 +313,8 @@ class AIService {
         clinicId?: string,
         sessionId?: string,
         imageBase64?: string,
-        imageMimeType?: string
+        imageMimeType?: string,
+        history?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
     ): Promise<string> {
         if (!this.initialized) await this.loadConfigs();
 
@@ -321,6 +328,7 @@ class AIService {
                 context: contextObj,
                 session_id: sessionId,
                 clinic_id: clinicId ? parseInt(clinicId) : undefined,
+                history,
             };
 
             if (imageBase64) {

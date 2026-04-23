@@ -1,18 +1,28 @@
 import React, { useState, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Brain,
   MessageCircle,
   User,
   Image as ImageIcon,
   X,
-  Zap
+  MapPin,
+  Calendar,
+  Mic,
+  Square,
+  Volume2
 } from 'lucide-react';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { aiService } from '../../services/ai/AIService';
+import { usePublicClinics } from '../../hooks/usePublicClinics';
+import { Clinic } from '../../types';
+
+type PatientChatMessage = { role: 'user' | 'ai'; content: string; image?: string | null; clinics?: Clinic[] };
 
 export const SmartDiagnosisPage: React.FC = () => {
-  const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'ai'; content: string; image?: string | null }[]>([
+  const { clinics } = usePublicClinics();
+  const [chatMessages, setChatMessages] = useState<PatientChatMessage[]>([
     {
       role: 'ai',
       content: 'مرحباً! أنا مساعدك الذكي للتشخيص. يرجى إخباري بما تشعر به في أسنانك، أو أرفق صورة للتحليل.'
@@ -22,7 +32,9 @@ export const SmartDiagnosisPage: React.FC = () => {
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<any>(null);
 
   const [sessionId, setSessionId] = useState<string>('');
 
@@ -55,6 +67,47 @@ export const SmartDiagnosisPage: React.FC = () => {
     }
   };
 
+  const getRecommendedClinics = (text: string) => {
+    const q = text.toLowerCase();
+    const specialtyHints = [
+      { keys: ['تقويم', 'اعوجاج'], specialty: 'تقويم' },
+      { keys: ['طفل', 'اطفال', 'أطفال'], specialty: 'أطفال' },
+      { keys: ['جراحة', 'خلع', 'ضرس عقل'], specialty: 'جراحة' },
+      { keys: ['ألم', 'الم', 'طوارئ', 'تسوس'], specialty: 'عام' },
+    ];
+    const matched = specialtyHints.find(h => h.keys.some(k => q.includes(k)))?.specialty;
+    const source = matched
+      ? clinics.filter(c => c.specialties?.some(s => s.includes(matched)) || c.services?.some(s => s.includes(matched)))
+      : clinics;
+    return source.slice(0, 3);
+  };
+
+  const toggleListening = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'ar-IQ';
+    recognition.interimResults = true;
+    recognition.onresult = (event: any) => setCurrentMessage(Array.from(event.results).map((r: any) => r[0]?.transcript).join(' '));
+    recognition.onend = () => setIsListening(false);
+    recognitionRef.current = recognition;
+    setIsListening(true);
+    recognition.start();
+  };
+
+  const speakText = (text: string) => {
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'ar-IQ';
+    window.speechSynthesis.speak(utterance);
+  };
+
   const handleSendMessage = async () => {
     if (!currentMessage.trim() && !selectedImage) return;
     if (isLoading) return;
@@ -83,21 +136,32 @@ export const SmartDiagnosisPage: React.FC = () => {
 
       const promptText = userMsg.content?.trim()
         || (currentImage ? 'افحص هذه الصورة بدقة وأخبرني بما تراه من مشاكل مع نصائح مناسبة.' : '');
+      const recommendations = getRecommendedClinics(promptText);
+      const clinicContext = recommendations.map(c => ({
+        id: c.id,
+        name: c.name,
+        governorate: (c as any).governorate,
+        address: c.address,
+        specialties: c.specialties,
+        booking: (c as any).isDigitalBookingEnabled
+      }));
 
       const response = await aiService.chat(
         'patient_assistant',
         promptText,
-        undefined,
+        { registeredClinics: clinicContext, shouldRecommendClinics: recommendations.length > 0 },
         undefined,
         undefined,
         sessionId,
         base64Data,
-        mimeType
+        mimeType,
+        chatMessages.map(m => ({ role: m.role === 'user' ? 'user' as const : 'assistant' as const, content: m.content })).slice(-10)
       );
 
       setChatMessages(prev => [...prev, {
         role: 'ai',
-        content: response
+        content: response,
+        clinics: recommendations
       }]);
     } catch (error) {
       console.error('AI Chat Error:', error);
@@ -146,6 +210,26 @@ export const SmartDiagnosisPage: React.FC = () => {
                     )}
 
                     <span className="mr-2 whitespace-pre-wrap">{message.content}</span>
+                    {message.role === 'ai' && (
+                      <button onClick={() => speakText(message.content)} className="block mt-2 text-[11px] text-blue-700 hover:text-blue-900">
+                        <Volume2 className="w-3 h-3 inline ml-1" /> قراءة الرد
+                      </button>
+                    )}
+                    {message.clinics && message.clinics.length > 0 && (
+                      <div className="mt-3 grid gap-2 text-right">
+                        {message.clinics.map((clinic) => (
+                          <div key={clinic.id} className="bg-white/80 border border-blue-200 rounded-lg p-2 text-xs text-gray-800">
+                            <div className="font-bold text-gray-900">{clinic.name}</div>
+                            <div className="flex items-center gap-1 text-gray-500 mt-1"><MapPin className="w-3 h-3" />{(clinic as any).governorate || clinic.address || 'العراق'}</div>
+                            <div className="text-gray-600 mt-1">{clinic.specialties?.slice(0, 2).join('، ')}</div>
+                            <div className="flex gap-2 mt-2">
+                              <Link to={`/clinic/${clinic.id}`} className="text-blue-700 font-bold hover:underline">عرض العيادة</Link>
+                              <Link to={`/booking?clinic=${clinic.id}`} className="text-emerald-700 font-bold hover:underline"><Calendar className="w-3 h-3 inline ml-1" />حجز موعد</Link>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -201,6 +285,15 @@ export const SmartDiagnosisPage: React.FC = () => {
                 placeholder={selectedImage ? "صف الصورة أو اضغط إرسال..." : "اكتب رسالتك هنا..."}
                 className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-right"
               />
+
+              <Button
+                variant="secondary"
+                onClick={toggleListening}
+                className="px-3"
+                title={isListening ? 'إيقاف الاستماع' : 'تحدث صوتياً'}
+              >
+                {isListening ? <Square className="w-5 h-5 text-red-600" /> : <Mic className="w-5 h-5 text-gray-600" />}
+              </Button>
 
               <Button
                 onClick={handleSendMessage}

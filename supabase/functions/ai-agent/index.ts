@@ -13,12 +13,13 @@ const IMAGE_ANALYSIS_SYSTEM = `You are an expert dental radiologist, oral pathol
 Analyze dental radiographic images (panoramic, periapical, bitewing, CBCT, intraoral photos) with clinical precision.
 
 ## Analysis Protocol
-1. **Image Quality Assessment**: Evaluate exposure, contrast, positioning, and diagnostic utility.
-2. **Systematic Tooth-by-Tooth Examination**: Check each visible tooth using FDI numbering system.
-3. **Pathology Detection**: Identify caries (initial, moderate, deep), periapical lesions, bone loss (horizontal/vertical), root resorption, fractures, impacted teeth, cysts, calculus, and any abnormalities.
-4. **Severity Grading**: Rate each finding as low/medium/high severity.
-5. **Bounding Box Localization**: For EACH detected issue, provide precise normalized bounding box coordinates [x, y, width, height] where values are 0-1 representing percentage of the ACTUAL image pixels. x=left edge, y=top edge, width and height are proportional sizes.
-6. **Clinical Recommendations**: Provide specific treatment suggestions for each finding.
+1. **Classify image_type first**: panoramic_xray, periapical_xray, bitewing_xray, cbct_slice, intraoral_phone_photo, extraoral_face_photo, or unknown.
+2. **Image Quality Assessment**: Evaluate exposure, contrast, focus, positioning, diagnostic utility, and whether retake is recommended.
+3. **Use type-specific logic**: panoramic = jaws, impacted teeth, bone loss, apical lesions, missing teeth; phone photo = visible caries, gingivitis, swelling, fractures, calculus, stains; bitewing/periapical = interproximal caries, restorations, bone level, apical findings.
+4. **Systematic Tooth-by-Tooth Examination**: Check each visible tooth using FDI numbering system.
+5. **Pathology Detection**: Identify caries, periapical lesions, bone loss, root resorption, fractures, impacted teeth, cysts, calculus, and visible soft-tissue issues.
+6. **Bounding Box Localization**: For EACH detected issue, provide precise normalized bounding box coordinates [x, y, width, height] where values are 0-1 representing percentage of the ACTUAL image pixels, not displayed container. x=left edge, y=top edge.
+7. **Clinical Recommendations**: Provide clinical_description, evidence_visible, risk_if_untreated, treatment_steps, priority, estimated_sessions and phased treatment plan.
 
 ## Localization Accuracy Rules
 - Draw the box around the visible abnormal finding itself, NOT the entire tooth unless the whole tooth is abnormal.
@@ -33,7 +34,9 @@ Analyze dental radiographic images (panoramic, periapical, bitewing, CBCT, intra
 - Use FDI tooth numbering (11-48).
 - Provide confidence levels for each finding.
 - Always respond in Arabic.
-- Each issue MUST include a bounding box for visual annotation.`;
+- Each issue MUST include a bounding box for visual annotation.
+- Produce a patient-friendly summary and doctor notes.
+- Never invent prices; use clinic catalog only if supplied.`;
 
 const clamp = (value: unknown, min = 0, max = 1) => {
   const n = Number(value);
@@ -64,9 +67,15 @@ const normalizeAnalysisResult = (result: any) => {
     return {
       ...issue,
       confidence: clamp(issue?.confidence, 0, 1),
+      description: issue?.description || issue?.clinical_description || issue?.evidence_visible || issue?.label || "",
       box: [x, y, width, height],
     };
   });
+
+  const planCost = result?.treatment_plan?.total_estimated_cost;
+  if (typeof planCost === "number" && typeof result.total_estimated_cost !== "number") {
+    result.total_estimated_cost = planCost;
+  }
 
   return result;
 };
@@ -83,7 +92,9 @@ const DEFAULT_SYSTEM_RULES: Record<string, string> = {
 2. Answer patient questions about dental procedures simply.
 3. If they ask for medical advice, give general info but strictly advise visiting a doctor.
 4. Help with appointment scheduling information.
-5. Be polite and welcoming in Arabic.`,
+5. Be polite and welcoming in Arabic.
+6. If active clinics are provided, recommend relevant registered clinics/doctors by specialty and location without claiming emergency certainty.
+7. For image questions, explain visible findings carefully and remind the patient that final diagnosis requires a dentist.`,
 };
 
 // Tool definition for structured dental analysis output
@@ -108,10 +119,20 @@ const DENTAL_ANALYSIS_TOOL = {
           type: "number",
           description: "Overall confidence score 0-1"
         },
-        image_quality: {
+        image_type: {
           type: "string",
-          enum: ["excellent", "good", "fair", "poor"],
-          description: "Quality assessment of the radiographic image"
+          enum: ["panoramic_xray", "periapical_xray", "bitewing_xray", "cbct_slice", "intraoral_phone_photo", "extraoral_face_photo", "unknown"],
+          description: "Classified dental image type"
+        },
+        image_quality: {
+          type: "object",
+          properties: {
+            rating: { type: "string", enum: ["excellent", "good", "fair", "poor"] },
+            problems: { type: "array", items: { type: "string" } },
+            retake_recommended: { type: "boolean" }
+          },
+          required: ["rating", "problems", "retake_recommended"],
+          description: "Quality assessment and retake recommendation"
         },
         summary: {
           type: "string",
@@ -149,6 +170,10 @@ const DENTAL_ANALYSIS_TOOL = {
                 type: "string",
                 description: "Detailed description of the finding in Arabic"
               },
+              clinical_description: { type: "string", description: "Precise clinical description in Arabic" },
+              evidence_visible: { type: "string", description: "Visible evidence that supports the finding" },
+              differential_diagnosis: { type: "array", items: { type: "string" } },
+              risk_if_untreated: { type: "string" },
               box: {
                 type: "array",
                 items: { type: "number" },
@@ -158,6 +183,9 @@ const DENTAL_ANALYSIS_TOOL = {
                 type: "string",
                 description: "Suggested treatment in Arabic"
               },
+              treatment_steps: { type: "array", items: { type: "string" } },
+              priority: { type: "string", enum: ["urgent", "high", "normal", "low"] },
+              estimated_sessions: { type: "number" },
               matched_treatment_name: {
                 type: "string",
                 description: "Exact name of the treatment from clinic_treatments_catalog that best matches this issue. If no good match exists, leave empty."
@@ -192,9 +220,35 @@ const DENTAL_ANALYSIS_TOOL = {
         total_estimated_cost: {
           type: "number",
           description: "Sum of matched_treatment_price across all issues with treatment_match_status='matched'. 0 if no catalog provided."
-        }
+        },
+        treatment_plan: {
+          type: "object",
+          properties: {
+            phases: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  title: { type: "string" },
+                  description: { type: "string" },
+                  priority: { type: "string" },
+                  sessions: { type: "number" },
+                  items: { type: "array", items: { type: "string" } },
+                  estimated_cost: { type: "number" }
+                },
+                required: ["title", "description", "priority", "sessions", "items"]
+              }
+            },
+            total_sessions: { type: "number" },
+            total_estimated_cost: { type: "number" }
+          },
+          required: ["phases"]
+        },
+        doctor_notes: { type: "array", items: { type: "string" } },
+        patient_friendly_summary: { type: "string" },
+        follow_up_schedule: { type: "string" }
       },
-      required: ["diagnosis", "severity", "confidence", "summary", "issues", "findings", "recommendation"]
+      required: ["diagnosis", "severity", "confidence", "image_type", "image_quality", "summary", "issues", "findings", "recommendation"]
     }
   }
 };

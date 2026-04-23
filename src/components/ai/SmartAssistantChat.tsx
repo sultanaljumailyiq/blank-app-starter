@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Sparkles, Paperclip, X, FileText, Image as ImageIcon, FileSpreadsheet, Save } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { Send, Bot, User, Sparkles, Paperclip, X, FileText, Image as ImageIcon, FileSpreadsheet, Save, Mic, Volume2, Square } from 'lucide-react';
 import { Button } from '../common/Button';
 import { aiService } from '../../services/ai/AIService';
 
@@ -35,9 +37,11 @@ export const SmartAssistantChat: React.FC<SmartAssistantChatProps> = ({ patientI
     const [input, setInput] = useState('');
     const [isTyping, setIsTyping] = useState(false);
     const [attachedFile, setAttachedFile] = useState<File | null>(null);
+    const [isListening, setIsListening] = useState(false);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const recognitionRef = useRef<any>(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -53,6 +57,46 @@ export const SmartAssistantChat: React.FC<SmartAssistantChatProps> = ({ patientI
             setAttachedFile(file);
         }
         e.target.value = '';
+    };
+
+    const fileToDataUrl = (file: File): Promise<{ base64?: string; mimeType?: string }> => new Promise((resolve) => {
+        if (!file.type.startsWith('image/')) return resolve({});
+        const reader = new FileReader();
+        reader.onload = () => {
+            const match = String(reader.result).match(/^data:(image\/[^;]+);base64,(.+)$/);
+            resolve({ mimeType: match?.[1], base64: match?.[2] });
+        };
+        reader.onerror = () => resolve({});
+        reader.readAsDataURL(file);
+    });
+
+    const toggleListening = () => {
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (!SpeechRecognition) return;
+        if (isListening) {
+            recognitionRef.current?.stop();
+            setIsListening(false);
+            return;
+        }
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'ar-IQ';
+        recognition.interimResults = true;
+        recognition.onresult = (event: any) => {
+            const transcript = Array.from(event.results).map((r: any) => r[0]?.transcript).join(' ');
+            setInput(transcript);
+        };
+        recognition.onend = () => setIsListening(false);
+        recognitionRef.current = recognition;
+        setIsListening(true);
+        recognition.start();
+    };
+
+    const speakText = (text: string) => {
+        if (!('speechSynthesis' in window)) return;
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text.replace(/[*_#>`]/g, ''));
+        utterance.lang = 'ar-IQ';
+        window.speechSynthesis.speak(utterance);
     };
 
     const handleInjectContext = async () => {
@@ -119,17 +163,29 @@ export const SmartAssistantChat: React.FC<SmartAssistantChatProps> = ({ patientI
         setIsTyping(true);
 
         try {
+            const imagePayload = attachedFile ? await fileToDataUrl(attachedFile) : {};
+            const history = messages
+                .filter(m => m.text)
+                .map(m => ({ role: m.sender === 'user' ? 'user' as const : 'assistant' as const, content: m.text }))
+                .slice(-12);
             // Construct Context
             const context = {
                 patientId,
                 patientName,
-                attachment: newMessage.attachment
+                attachment: newMessage.attachment,
+                fullConversation: true
             };
 
             const responseText = await aiService.chat(
                 'doctor_assistant',
-                newMessage.text,
-                context
+                newMessage.text || (attachedFile?.type.startsWith('image/') ? 'حلل الصورة المرفقة ضمن سياق ملف المريض.' : 'حلل الملف المرفق.'),
+                context,
+                undefined,
+                undefined,
+                undefined,
+                imagePayload.base64,
+                imagePayload.mimeType,
+                history
             );
 
             const botMsg: Message = {
@@ -238,14 +294,23 @@ export const SmartAssistantChat: React.FC<SmartAssistantChatProps> = ({ patientI
 
                             {/* Text Bubble */}
                             {msg.text && (
-                                <div className={`p-3.5 px-5 rounded-2xl text-sm leading-relaxed shadow-sm whitespace-pre-line ${msg.sender === 'user' ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-tr-none' : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'}`}>
-                                    {msg.text}
+                                <div className={`p-3.5 px-5 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.sender === 'user' ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-tr-none' : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'}`}>
+                                    {msg.sender === 'bot' ? (
+                                        <div className="prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0 text-inherit">
+                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
+                                        </div>
+                                    ) : msg.text}
                                 </div>
                             )}
 
                             {/* Timestamp */}
                             <p className={`text-[10px] text-gray-400 px-1 ${msg.sender === 'user' ? 'text-left' : 'text-right'}`}>
                                 {msg.timestamp.toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })}
+                                {msg.sender === 'bot' && msg.text && (
+                                    <button onClick={() => speakText(msg.text)} className="mr-2 inline-flex items-center gap-1 text-blue-500 hover:text-blue-700">
+                                        <Volume2 className="w-3 h-3" /> قراءة
+                                    </button>
+                                )}
                             </p>
                         </div>
                     </div>
@@ -316,6 +381,16 @@ export const SmartAssistantChat: React.FC<SmartAssistantChatProps> = ({ patientI
                             target.style.height = target.scrollHeight + 'px';
                         }}
                     />
+
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={toggleListening}
+                        className={`rounded-xl aspect-square p-0 w-11 h-11 flex items-center justify-center transition-all ${isListening ? 'bg-red-100 text-red-600' : 'text-gray-400 hover:text-indigo-600 hover:bg-indigo-50'}`}
+                        title={isListening ? 'إيقاف الاستماع' : 'إملاء صوتي'}
+                    >
+                        {isListening ? <Square className="w-4 h-4" /> : <Mic className="w-5 h-5" />}
+                    </Button>
 
                     <Button
                         onClick={handleSend}

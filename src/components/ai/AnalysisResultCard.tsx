@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AIAnalysisResult } from '../../types/ai';
 import {
     CheckCircle, AlertTriangle, Info, ZoomIn, X, Server, Activity,
@@ -38,6 +38,75 @@ const BOX_COLORS = [
     { border: 'border-pink-500', bg: 'bg-pink-500/10', hover: 'hover:bg-pink-500/20', text: 'text-pink-500', shadow: 'shadow-pink-500/30' },
 ];
 
+const IMAGE_TYPE_LABELS: Record<string, string> = {
+    panoramic_xray: 'أشعة بانورامية',
+    periapical_xray: 'أشعة حول ذروية',
+    bitewing_xray: 'Bitewing',
+    cbct_slice: 'مقطع CBCT',
+    intraoral_phone_photo: 'صورة هاتف داخل الفم',
+    extraoral_face_photo: 'صورة خارجية',
+    unknown: 'نوع غير محدد',
+};
+
+const QUALITY_LABELS: Record<string, string> = {
+    excellent: 'ممتازة',
+    good: 'جيدة',
+    fair: 'متوسطة',
+    poor: 'ضعيفة',
+};
+
+const AccurateImageOverlay: React.FC<{
+    imageUrl: string;
+    alt: string;
+    className?: string;
+    onClick?: () => void;
+    children: React.ReactNode;
+}> = ({ imageUrl, alt, className = 'w-full h-full object-contain', onClick, children }) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
+    const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+
+    useEffect(() => {
+        const node = containerRef.current;
+        if (!node) return;
+        const update = () => setContainerSize({ width: node.clientWidth, height: node.clientHeight });
+        update();
+        const observer = new ResizeObserver(update);
+        observer.observe(node);
+        return () => observer.disconnect();
+    }, []);
+
+    const imageAspect = naturalSize.width && naturalSize.height ? naturalSize.width / naturalSize.height : 1;
+    const containerAspect = containerSize.width && containerSize.height ? containerSize.width / containerSize.height : imageAspect;
+    const renderedWidth = containerAspect > imageAspect ? containerSize.height * imageAspect : containerSize.width;
+    const renderedHeight = containerAspect > imageAspect ? containerSize.height : containerSize.width / imageAspect;
+    const overlayStyle = {
+        width: `${renderedWidth || containerSize.width}px`,
+        height: `${renderedHeight || containerSize.height}px`,
+        left: `${Math.max(0, (containerSize.width - renderedWidth) / 2)}px`,
+        top: `${Math.max(0, (containerSize.height - renderedHeight) / 2)}px`,
+    };
+
+    return (
+        <div ref={containerRef} className="relative w-full h-full" onClick={onClick}>
+            <img
+                src={imageUrl}
+                alt={alt}
+                className={className}
+                onLoad={(event) => {
+                    const img = event.currentTarget;
+                    setNaturalSize({ width: img.naturalWidth, height: img.naturalHeight });
+                }}
+            />
+            <div className="absolute pointer-events-none" style={overlayStyle}>
+                <div className="relative w-full h-full pointer-events-auto">
+                    {children}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ imageUrl, result, date }) => {
     const [isZoomOpen, setIsZoomOpen] = useState(false);
     const [showBoxes, setShowBoxes] = useState(true);
@@ -48,6 +117,9 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ imageUrl
     const model = result.metadata?.model || 'Demo';
     const overallSeverity = result.severity || 'low';
     const severityConfig = SEVERITY_CONFIG[overallSeverity];
+    const imageQuality = typeof result.image_quality === 'string'
+        ? { rating: result.image_quality, problems: [], retake_recommended: false }
+        : result.image_quality;
 
     const getBoxColor = (idx: number) => BOX_COLORS[idx % BOX_COLORS.length];
     const isReliableBox = (issue: AIAnalysisResult['issues'][number]) => {
@@ -144,14 +216,29 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ imageUrl
                             onClick={() => setIsZoomOpen(true)}
                         >
                             <div className="aspect-[4/3] relative">
-                                <img src={imageUrl} alt="صورة الأشعة" className="w-full h-full object-contain" />
+                                <AccurateImageOverlay imageUrl={imageUrl} alt="صورة الأشعة" onClick={() => setIsZoomOpen(true)}>
                                 {renderBoundingBoxes(false)}
+                                </AccurateImageOverlay>
                                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
                                     <span className="bg-white/90 text-gray-800 px-3 py-1.5 rounded-full text-xs font-bold shadow-lg flex items-center gap-2 backdrop-blur-sm">
                                         <ZoomIn className="w-4 h-4" />
                                         تكبير وعرض التفاصيل
                                     </span>
                                 </div>
+                            </div>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                            <div className="bg-white p-2 rounded-lg border border-gray-100 text-center">
+                                <span className="block text-[10px] text-gray-400">نوع الصورة</span>
+                                <span className="block font-bold text-gray-800 text-xs">{IMAGE_TYPE_LABELS[result.image_type || 'unknown'] || 'غير محدد'}</span>
+                            </div>
+                            <div className="bg-white p-2 rounded-lg border border-gray-100 text-center">
+                                <span className="block text-[10px] text-gray-400">جودة الصورة</span>
+                                <span className="block font-bold text-gray-800 text-xs">
+                                    {QUALITY_LABELS[imageQuality?.rating || ''] || imageQuality?.rating || 'غير محددة'}
+                                    {imageQuality?.retake_recommended ? ' • يفضّل الإعادة' : ''}
+                                </span>
                             </div>
                         </div>
 
@@ -264,11 +351,23 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ imageUrl
                                                 {issue.description && (
                                                     <p className="text-xs text-gray-500 mt-1.5 pr-7 leading-5">{issue.description}</p>
                                                 )}
+                                                {((issue as any).clinical_description || (issue as any).evidence_visible || (issue as any).risk_if_untreated) && (
+                                                    <div className="mt-2 pr-7 grid gap-1.5 text-[11px] leading-5">
+                                                        {(issue as any).clinical_description && <p className="bg-gray-50 rounded-md px-2 py-1 text-gray-700"><b>الوصف السريري:</b> {(issue as any).clinical_description}</p>}
+                                                        {(issue as any).evidence_visible && <p className="bg-blue-50 rounded-md px-2 py-1 text-blue-800"><b>الدليل المرئي:</b> {(issue as any).evidence_visible}</p>}
+                                                        {(issue as any).risk_if_untreated && <p className="bg-red-50 rounded-md px-2 py-1 text-red-800"><b>الخطر عند الإهمال:</b> {(issue as any).risk_if_untreated}</p>}
+                                                    </div>
+                                                )}
                                                 {(issue as any).treatment_suggestion && (
                                                     <p className="text-xs text-purple-600 mt-1 pr-7 leading-5 flex items-start gap-1">
                                                         <Sparkles className="w-3 h-3 mt-0.5 shrink-0" />
                                                         {(issue as any).treatment_suggestion}
                                                     </p>
+                                                )}
+                                                {Array.isArray((issue as any).treatment_steps) && (issue as any).treatment_steps.length > 0 && (
+                                                    <ol className="mt-1 pr-10 text-[11px] text-gray-600 leading-5 list-decimal">
+                                                        {(issue as any).treatment_steps.map((step: string, stepIdx: number) => <li key={stepIdx}>{step}</li>)}
+                                                    </ol>
                                                 )}
                                                 {/* Matched treatment from clinic catalog */}
                                                 {(issue as any).matched_treatment_name && (issue as any).treatment_match_status === 'matched' ? (
@@ -321,6 +420,41 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ imageUrl
                                     <p className="font-bold">تحليل سليم</p>
                                     <p className="text-xs opacity-80">لم يتم اكتشاف مشاكل واضحة في الصورة</p>
                                 </div>
+                            </div>
+                        )}
+
+                        {/* Treatment Plan */}
+                        {result.treatment_plan?.phases && result.treatment_plan.phases.length > 0 && (
+                            <div className="space-y-2">
+                                <h4 className="flex items-center gap-2 font-bold text-gray-900 text-sm border-b pb-2">
+                                    <CheckCircle className="w-4 h-4 text-emerald-600" />
+                                    الخطة العلاجية المرحلية
+                                </h4>
+                                <div className="grid gap-2">
+                                    {result.treatment_plan.phases.map((phase, idx) => (
+                                        <div key={idx} className="bg-emerald-50/60 border border-emerald-100 rounded-xl p-3">
+                                            <div className="flex items-center justify-between gap-2 mb-1">
+                                                <span className="font-bold text-sm text-emerald-900">{phase.title}</span>
+                                                <span className="text-[10px] bg-white text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-100">{phase.sessions} جلسة</span>
+                                            </div>
+                                            <p className="text-xs text-emerald-800 leading-5">{phase.description}</p>
+                                            {phase.items?.length > 0 && <p className="text-[11px] text-emerald-700 mt-1">{phase.items.join('، ')}</p>}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Patient Summary */}
+                        {(result.patient_friendly_summary || result.follow_up_schedule || (result.doctor_notes?.length || 0) > 0) && (
+                            <div className="space-y-2">
+                                <h4 className="flex items-center gap-2 font-bold text-gray-900 text-sm border-b pb-2">
+                                    <Info className="w-4 h-4 text-blue-600" />
+                                    ملخص وملاحظات المتابعة
+                                </h4>
+                                {result.patient_friendly_summary && <p className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-blue-900 text-xs leading-6">{result.patient_friendly_summary}</p>}
+                                {result.follow_up_schedule && <p className="bg-gray-50 p-2 rounded-lg text-xs text-gray-700"><b>المتابعة:</b> {result.follow_up_schedule}</p>}
+                                {result.doctor_notes?.map((note, i) => <p key={i} className="bg-amber-50 p-2 rounded-lg text-xs text-amber-800">{note}</p>)}
                             </div>
                         )}
 
@@ -394,13 +528,14 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ imageUrl
                         </div>
 
                         <div className="flex-1 flex items-center justify-center overflow-auto relative rounded-lg">
-                            <div className="relative inline-block max-w-full max-h-full">
-                                <img
-                                    src={imageUrl}
+                            <div className="relative inline-block w-full h-[85vh] max-w-full max-h-full">
+                                <AccurateImageOverlay
+                                    imageUrl={imageUrl}
                                     alt="تحليل الصورة الكامل"
-                                    className="max-w-full max-h-[85vh] object-contain rounded-md shadow-2xl"
-                                />
+                                    className="w-full h-full object-contain rounded-md shadow-2xl"
+                                >
                                 {renderBoundingBoxes(true)}
+                                </AccurateImageOverlay>
                             </div>
                         </div>
 
