@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AIAnalysisResult } from '../../types/ai';
 import {
     CheckCircle, AlertTriangle, Info, ZoomIn, X, Server, Activity,
@@ -37,6 +37,58 @@ const BOX_COLORS = [
     { border: 'border-teal-500', bg: 'bg-teal-500/10', hover: 'hover:bg-teal-500/20', text: 'text-teal-500', shadow: 'shadow-teal-500/30' },
     { border: 'border-pink-500', bg: 'bg-pink-500/10', hover: 'hover:bg-pink-500/20', text: 'text-pink-500', shadow: 'shadow-pink-500/30' },
 ];
+
+const IMAGE_TYPE_LABELS: Record<string, string> = {
+    panoramic_xray: 'أشعة بانورامية',
+    periapical_xray: 'أشعة حول ذروية',
+    bitewing_xray: 'Bitewing',
+    cbct_slice: 'مقطع CBCT',
+    intraoral_phone_photo: 'صورة هاتف داخل الفم',
+    extraoral_face_photo: 'صورة خارجية',
+    unknown: 'نوع غير محدد',
+};
+
+const QUALITY_LABELS: Record<string, string> = {
+    excellent: 'ممتازة',
+    good: 'جيدة',
+    fair: 'متوسطة',
+    poor: 'ضعيفة',
+};
+
+const AccurateImageOverlay: React.FC<{
+    imageUrl: string;
+    alt: string;
+    className?: string;
+    onClick?: () => void;
+    children: React.ReactNode;
+}> = ({ imageUrl, alt, className = 'w-full h-full object-contain', onClick, children }) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
+    const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+
+    useEffect(() => {
+        const node = containerRef.current;
+        if (!node) return;
+        const update = () => setContainerSize({ width: node.clientWidth, height: node.clientHeight });
+        update();
+        const observer = new ResizeObserver(update);
+        observer.observe(node);
+        return () => observer.disconnect();
+    }, []);
+
+    const imageAspect = naturalSize.width && naturalSize.height ? naturalSize.width / naturalSize.height : 1;
+    const containerAspect = containerSize.width && containerSize.height ? containerSize.width / containerSize.height : imageAspect;
+    const renderedWidth = containerAspect > imageAspect ? containerSize.height * imageAspect : containerSize.width;
+    const renderedHeight = containerAspect > imageAspect ? containerSize.height : containerSize.width / imageAspect;
+    const overlayStyle = {
+        width: `${renderedWidth || containerSize.width}px`,
+        height: `${renderedHeight || containerSize.height}px`,
+        left: `${Math.max(0, (containerSize.width - renderedWidth) / 2)}px`,
+        top: `${Math.max(0, (containerSize.height - renderedHeight) / 2)}px`,
+    };
+
+    return (
+        <div ref={containerRef} className=
 
 export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ imageUrl, result, date }) => {
     const [isZoomOpen, setIsZoomOpen] = useState(false);
