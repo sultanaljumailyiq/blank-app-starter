@@ -119,10 +119,20 @@ const DENTAL_ANALYSIS_TOOL = {
           type: "number",
           description: "Overall confidence score 0-1"
         },
-        image_quality: {
+        image_type: {
           type: "string",
-          enum: ["excellent", "good", "fair", "poor"],
-          description: "Quality assessment of the radiographic image"
+          enum: ["panoramic_xray", "periapical_xray", "bitewing_xray", "cbct_slice", "intraoral_phone_photo", "extraoral_face_photo", "unknown"],
+          description: "Classified dental image type"
+        },
+        image_quality: {
+          type: "object",
+          properties: {
+            rating: { type: "string", enum: ["excellent", "good", "fair", "poor"] },
+            problems: { type: "array", items: { type: "string" } },
+            retake_recommended: { type: "boolean" }
+          },
+          required: ["rating", "problems", "retake_recommended"],
+          description: "Quality assessment and retake recommendation"
         },
         summary: {
           type: "string",
@@ -160,6 +170,10 @@ const DENTAL_ANALYSIS_TOOL = {
                 type: "string",
                 description: "Detailed description of the finding in Arabic"
               },
+              clinical_description: { type: "string", description: "Precise clinical description in Arabic" },
+              evidence_visible: { type: "string", description: "Visible evidence that supports the finding" },
+              differential_diagnosis: { type: "array", items: { type: "string" } },
+              risk_if_untreated: { type: "string" },
               box: {
                 type: "array",
                 items: { type: "number" },
@@ -169,6 +183,9 @@ const DENTAL_ANALYSIS_TOOL = {
                 type: "string",
                 description: "Suggested treatment in Arabic"
               },
+              treatment_steps: { type: "array", items: { type: "string" } },
+              priority: { type: "string", enum: ["urgent", "high", "normal", "low"] },
+              estimated_sessions: { type: "number" },
               matched_treatment_name: {
                 type: "string",
                 description: "Exact name of the treatment from clinic_treatments_catalog that best matches this issue. If no good match exists, leave empty."
@@ -203,9 +220,35 @@ const DENTAL_ANALYSIS_TOOL = {
         total_estimated_cost: {
           type: "number",
           description: "Sum of matched_treatment_price across all issues with treatment_match_status='matched'. 0 if no catalog provided."
-        }
+        },
+        treatment_plan: {
+          type: "object",
+          properties: {
+            phases: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  title: { type: "string" },
+                  description: { type: "string" },
+                  priority: { type: "string" },
+                  sessions: { type: "number" },
+                  items: { type: "array", items: { type: "string" } },
+                  estimated_cost: { type: "number" }
+                },
+                required: ["title", "description", "priority", "sessions", "items"]
+              }
+            },
+            total_sessions: { type: "number" },
+            total_estimated_cost: { type: "number" }
+          },
+          required: ["phases"]
+        },
+        doctor_notes: { type: "array", items: { type: "string" } },
+        patient_friendly_summary: { type: "string" },
+        follow_up_schedule: { type: "string" }
       },
-      required: ["diagnosis", "severity", "confidence", "summary", "issues", "findings", "recommendation"]
+      required: ["diagnosis", "severity", "confidence", "image_type", "image_quality", "summary", "issues", "findings", "recommendation"]
     }
   }
 };
