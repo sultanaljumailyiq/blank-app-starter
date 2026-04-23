@@ -74,7 +74,6 @@ export interface AIAnalysisResult {
     has_clinic_catalog?: boolean;
     summary: string;
     recommendation: string;
-    image_quality?: string;
     affected_teeth?: string[];
     metadata?: AIAnalysisMetadata;
     // Optional compatibility fields if needed elsewhere
