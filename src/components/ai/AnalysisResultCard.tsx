@@ -528,13 +528,14 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ imageUrl
                         </div>
 
                         <div className="flex-1 flex items-center justify-center overflow-auto relative rounded-lg">
-                            <div className="relative inline-block max-w-full max-h-full">
-                                <img
-                                    src={imageUrl}
+                            <div className="relative inline-block w-full h-[85vh] max-w-full max-h-full">
+                                <AccurateImageOverlay
+                                    imageUrl={imageUrl}
                                     alt="تحليل الصورة الكامل"
-                                    className="max-w-full max-h-[85vh] object-contain rounded-md shadow-2xl"
-                                />
+                                    className="w-full h-full object-contain rounded-md shadow-2xl"
+                                >
                                 {renderBoundingBoxes(true)}
+                                </AccurateImageOverlay>
                             </div>
                         </div>
 
