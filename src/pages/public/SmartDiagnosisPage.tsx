@@ -1,18 +1,28 @@
 import React, { useState, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Brain,
   MessageCircle,
   User,
   Image as ImageIcon,
   X,
-  Zap
+  MapPin,
+  Calendar,
+  Mic,
+  Square,
+  Volume2
 } from 'lucide-react';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { aiService } from '../../services/ai/AIService';
+import { usePublicClinics } from '../../hooks/usePublicClinics';
+import { Clinic } from '../../types';
+
+type PatientChatMessage = { role: 'user' | 'ai'; content: string; image?: string | null; clinics?: Clinic[] };
 
 export const SmartDiagnosisPage: React.FC = () => {
-  const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'ai'; content: string; image?: string | null }[]>([
+  const { clinics } = usePublicClinics();
+  const [chatMessages, setChatMessages] = useState<PatientChatMessage[]>([
     {
       role: 'ai',
       content: 'مرحباً! أنا مساعدك الذكي للتشخيص. يرجى إخباري بما تشعر به في أسنانك، أو أرفق صورة للتحليل.'
@@ -22,7 +32,9 @@ export const SmartDiagnosisPage: React.FC = () => {
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<any>(null);
 
   const [sessionId, setSessionId] = useState<string>('');
 
@@ -53,6 +65,47 @@ export const SmartDiagnosisPage: React.FC = () => {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  };
+
+  const getRecommendedClinics = (text: string) => {
+    const q = text.toLowerCase();
+    const specialtyHints = [
+      { keys: ['تقويم', 'اعوجاج'], specialty: 'تقويم' },
+      { keys: ['طفل', 'اطفال', 'أطفال'], specialty: 'أطفال' },
+      { keys: ['جراحة', 'خلع', 'ضرس عقل'], specialty: 'جراحة' },
+      { keys: ['ألم', 'الم', 'طوارئ', 'تسوس'], specialty: 'عام' },
+    ];
+    const matched = specialtyHints.find(h => h.keys.some(k => q.includes(k)))?.specialty;
+    const source = matched
+      ? clinics.filter(c => c.specialties?.some(s => s.includes(matched)) || c.services?.some(s => s.includes(matched)))
+      : clinics;
+    return source.slice(0, 3);
+  };
+
+  const toggleListening = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'ar-IQ';
+    recognition.interimResults = true;
+    recognition.onresult = (event: any) => setCurrentMessage(Array.from(event.results).map((r: any) => r[0]?.transcript).join(' '));
+    recognition.onend = () => setIsListening(false);
+    recognitionRef.current = recognition;
+    setIsListening(true);
+    recognition.start();
+  };
+
+  const speakText = (text: string) => {
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'ar-IQ';
+    window.speechSynthesis.speak(utterance);
   };
 
   const handleSendMessage = async () => {
