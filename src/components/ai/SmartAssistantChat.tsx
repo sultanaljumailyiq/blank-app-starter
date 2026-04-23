@@ -163,17 +163,29 @@ export const SmartAssistantChat: React.FC<SmartAssistantChatProps> = ({ patientI
         setIsTyping(true);
 
         try {
+            const imagePayload = attachedFile ? await fileToDataUrl(attachedFile) : {};
+            const history = messages
+                .filter(m => m.text)
+                .map(m => ({ role: m.sender === 'user' ? 'user' as const : 'assistant' as const, content: m.text }))
+                .slice(-12);
             // Construct Context
             const context = {
                 patientId,
                 patientName,
-                attachment: newMessage.attachment
+                attachment: newMessage.attachment,
+                fullConversation: true
             };
 
             const responseText = await aiService.chat(
                 'doctor_assistant',
-                newMessage.text,
+                newMessage.text || (attachedFile?.type.startsWith('image/') ? 'حلل الصورة المرفقة ضمن سياق ملف المريض.' : 'حلل الملف المرفق.'),
                 context
+                , undefined,
+                undefined,
+                undefined,
+                imagePayload.base64,
+                imagePayload.mimeType,
+                history
             );
 
             const botMsg: Message = {
