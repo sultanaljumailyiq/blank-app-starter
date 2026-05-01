@@ -68,6 +68,13 @@ export const SmartDiagnosisPage: React.FC = () => {
   const navigate = useNavigate();
   const { clinics } = usePublicClinics();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // ElevenLabs WebSocket refs (replaces WebRTC to fix ICE/NAT empty-audio issues)
+  const wsRef = useRef<WebSocket | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const audioQueueRef = useRef<ArrayBuffer[]>([]);
+  const isPlayingRef = useRef(false);
+  const micStreamRef = useRef<MediaStream | null>(null);
   const [input, setInput] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -99,7 +106,7 @@ export const SmartDiagnosisPage: React.FC = () => {
   useEffect(() => {
     if (messages.length === 0 && !initialMessageSent.current) {
       initialMessageSent.current = true;
-      pushAi('أنا المساعد الصوتي لمنصة طب الأسنان ، أساعدك في إيجاد أفضل عيادة لحالتك.', { kind: 'specialty' });
+      pushAi('أنا المساعد الذكي لمنصة طب الأسنان ، أساعدك في إيجاد أفضل عيادة لحالتك.', { kind: 'specialty' });
       setStep('specialty');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -274,105 +281,200 @@ export const SmartDiagnosisPage: React.FC = () => {
     u.lang = 'ar-IQ'; window.speechSynthesis.speak(u);
   };
 
-  // ============== ElevenLabs Voice Mode ==============
-  const conversation = useConversation({
-    onConnect: () => { console.log('Voice connected'); pushAi('🎙️ المساعد الصوتي متصل، تكلم الآن…'); },
-    onDisconnect: () => { console.log('Voice disconnected'); setVoiceMode(false); },
-    onError: (e: any) => { console.error('Voice error:', e); pushAi('تعذر تشغيل المساعد الصوتي. حاول مرة أخرى.'); setVoiceMode(false); },
-    onMessage: (m: any) => {
-      const text = m?.message || m?.text;
-      if (text && (m?.source === 'ai' || m?.role === 'assistant')) {
-        pushAi(`🎙️ ${text}`);
-      } else if (text && (m?.source === 'user' || m?.role === 'user')) {
-        pushUser(`🎙️ ${text}`);
-      }
-    },
-    clientTools: {
-      select_specialty: ({ specialty }: { specialty: string }) => {
-        const sp = SPECIALTIES.find(s => s.keys.some(k => specialty.toLowerCase().includes(k.toLowerCase())) || s.label.includes(specialty));
-        if (sp) { handleSpecialty(sp); return `تم اختيار ${sp.label}`; }
-        pushAi(`الاختصاصات المتاحة:`, { kind: 'specialty' });
-        return 'showed specialty cards';
-      },
-      select_governorate: ({ governorate }: { governorate: string }) => {
-        const g = GOVERNORATES.find(x => governorate.includes(x) || x.includes(governorate));
-        if (g) { handleGovernorate(g); return `تم اختيار ${g}`; }
-        pushAi('اختر محافظتك:', { kind: 'governorate' }); return 'showed governorate cards';
-      },
-      show_clinics: () => {
-        pushAi('إليك العيادات المقترحة:', { kind: 'clinics', clinics: filteredClinics });
-        return `${filteredClinics.length} clinics shown`;
-      },
-      select_clinic: ({ clinic_name }: { clinic_name: string }) => {
-        const c = clinicsRef.current.find(cl => cl.name.includes(clinic_name) || clinic_name.includes(cl.name));
-        if (c) { handleClinic(c); return `selected ${c.name}`; }
-        return 'clinic not found';
-      },
-      pick_date: ({ date }: { date: string }) => {
-        const d = new Date(date);
-        if (isNaN(d.getTime())) { pushAi('اختر اليوم:', { kind: 'date' }); return 'showed dates'; }
-        handleDate(d.toISOString(), d.toLocaleDateString('ar-IQ'));
-        return `picked ${date}`;
-      },
-      pick_time: ({ time }: { time: string }) => { handleTime(time); return `picked ${time}`; },
-      fill_patient_info: (params: { name?: string; phone?: string; age?: string; gender?: string }) => {
-        setBooking(prev => ({
-          ...prev,
-          patient: {
-            name: params.name || prev.patient.name,
-            phone: params.phone || prev.patient.phone,
-            age: params.age || prev.patient.age,
-            gender: (params.gender as any) || prev.patient.gender,
-          }
-        }));
-        return 'patient info updated. check if name and phone are filled, if not, ask for them.';
-      },
-      confirm_booking: async () => { 
-        const b = bookingRef.current;
-        if (!b.patient.name || !b.patient.phone) {
-          return 'Error: Missing patient name or phone. Please ask the user for their full name and phone number to complete the booking.';
-        }
-        await handleConfirmBooking(); 
-        return 'booking confirmed successfully. tell the user the appointment is confirmed and the clinic will contact them.'; 
-      },
-    },
-    overrides: {
-      agent: {
-        firstMessage: 'أهلاً بك في منصة طب الأسنان الذكية! أنا مساعدك الصوتي. أخبرني، ما الذي تعاني منه أو ما نوع العلاج الذي تحتاجه؟',
-        language: 'ar',
-        prompt: {
-          prompt: `أنت المساعد الصوتي الرسمي لمنصة طب الأسنان في العراق. تتحدث بلغة عربية عراقية ودودة ومحترفة باسم المنصة.
-مهمتك: مساعدة المريض في حجز موعد عبر:
-1) سؤاله عن المشكلة/الاختصاص (عام، تقويم، أطفال، جراحة، تجميل، طوارئ) → استخدم select_specialty
-2) سؤاله عن المحافظة → استخدم select_governorate
-3) عرض العيادات المسجلة → استخدم show_clinics ثم select_clinic عند اختياره
-4) سؤاله عن اليوم والوقت المناسب → pick_date و pick_time
-5) أخذ بياناته (الاسم، رقم الهاتف، العمر، الجنس) → fill_patient_info
-6) تأكيد الحجز → confirm_booking
-كن مختصراً ومتعاطفاً. لا تعطِ تشخيصاً طبياً نهائياً. اقترح دائماً عيادة من قاعدة بيانات المنصة.`
-        }
-      }
-    }
-  });
+  // (useConversation hook removed since we use raw WebSocket now)
 
+
+  // ─── ElevenLabs WebSocket audio player ───────────────────────────────────
+  const playNextChunk = useCallback(async () => {
+    if (isPlayingRef.current || audioQueueRef.current.length === 0 || !audioCtxRef.current) return;
+    isPlayingRef.current = true;
+    const chunk = audioQueueRef.current.shift()!;
+    try {
+      const buf = await audioCtxRef.current.decodeAudioData(chunk.slice(0));
+      const src = audioCtxRef.current.createBufferSource();
+      src.buffer = buf;
+      src.connect(audioCtxRef.current.destination);
+      src.onended = () => { isPlayingRef.current = false; playNextChunk(); };
+      src.start();
+    } catch {
+      isPlayingRef.current = false;
+      playNextChunk();
+    }
+  }, []);
+
+  // ─── Stop voice session ───────────────────────────────────────────────────
+  const stopVoiceMode = useCallback(() => {
+    mediaRecorderRef.current?.stop();
+    micStreamRef.current?.getTracks().forEach(t => t.stop());
+    wsRef.current?.close();
+    audioQueueRef.current = [];
+    isPlayingRef.current = false;
+    setVoiceMode(false);
+  }, []);
+
+  // ─── Start voice session (WebSocket, bypasses WebRTC/ICE NAT issues) ──────
   const startVoiceMode = async () => {
     setIsConnectingVoice(true);
     try {
-      // طلب الإذن مسبقاً لضمان عدم حظر المتصفح للاتصال (WebRTC timeout fix)
-      try { await navigator.mediaDevices.getUserMedia({ audio: true }); } catch (err) { console.warn("Mic access delay", err); }
-      await conversation.startSession({ agentId: ELEVENLABS_AGENT_ID });
-      setVoiceMode(true);
-    } catch (e) {
-      console.error(e);
-      pushAi('تعذر بدء المساعد الصوتي. قد تكون هناك مشكلة في الاتصال بالخادم أو الصلاحيات.');
-    } finally {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 }
+      });
+      micStreamRef.current = stream;
+
+      const ws = new WebSocket(
+        `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${ELEVENLABS_AGENT_ID}`
+      );
+      wsRef.current = ws;
+      audioCtxRef.current = new AudioContext({ sampleRate: 24000 });
+
+      ws.onopen = () => {
+        console.log('[ElevenLabs WS] connected');
+        setVoiceMode(true);
+        setIsConnectingVoice(false);
+        pushAi('🎙️ المساعد الصوتي متصل، تكلم الآن…');
+
+        // إرسال إعدادات الجلسة
+        ws.send(JSON.stringify({
+          type: 'conversation_initiation_client_data',
+          conversation_config_override: {
+            agent: {
+              first_message: 'أهلاً بك في منصة طب الأسنان الذكية! أنا مساعدك الصوتي. ما الذي تحتاجه؟',
+              language: 'ar',
+              prompt: {
+                prompt: `أنت المساعد الصوتي لمنصة طب الأسنان في العراق. تتحدث بعربية عراقية ودودة.
+مهمتك: مساعدة المريض في حجز موعد بالخطوات: 1) نوع العلاج 2) المحافظة 3) اليوم والوقت 4) الاسم ورقم الهاتف.
+كن مختصراً ومتعاطفاً ولا تعطِ تشخيصاً طبياً نهائياً.`
+              }
+            }
+          }
+        }));
+
+        // بدء تسجيل الصوت وإرساله بشكل مستمر
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : 'audio/webm';
+        const recorder = new MediaRecorder(stream, { mimeType });
+        mediaRecorderRef.current = recorder;
+        recorder.ondataavailable = (e) => {
+          if (ws.readyState === WebSocket.OPEN && e.data.size > 0) {
+            e.data.arrayBuffer().then(buf => {
+              const bytes = new Uint8Array(buf);
+              let bin = '';
+              bytes.forEach(b => (bin += String.fromCharCode(b)));
+              ws.send(JSON.stringify({ user_audio_chunk: btoa(bin) }));
+            });
+          }
+        };
+        recorder.start(250);
+      };
+
+      ws.onmessage = async (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'audio') {
+            const b64 = msg.audio_event?.audio_base_64 || msg.audio || '';
+            if (b64) {
+              const bin = atob(b64);
+              const bytes = new Uint8Array(bin.length);
+              for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+              audioQueueRef.current.push(bytes.buffer);
+              playNextChunk();
+            }
+          } else if (msg.type === 'agent_response' || msg.type === 'agent_response_correction') {
+            const text = msg.agent_response_event?.agent_response || msg.agent_response || '';
+            if (text) pushAi(`🎙️ ${text}`);
+          } else if (msg.type === 'user_transcript') {
+            const text = msg.user_transcription_event?.user_transcript || '';
+            if (text) pushUser(`🎙️ ${text}`);
+          } else if (msg.type === 'interruption') {
+            audioQueueRef.current = [];
+            isPlayingRef.current = false;
+          } else if (msg.type === 'client_tool_call') {
+            // Handle ElevenLabs Client Tools manually
+            const toolCall = msg.client_tool_call;
+            if (!toolCall) return;
+            const { tool_name, tool_call_id, parameters } = toolCall;
+            let result = '';
+            
+            try {
+              if (tool_name === 'select_specialty') {
+                const sp = SPECIALTIES.find(s => s.keys.some(k => parameters.specialty?.toLowerCase().includes(k.toLowerCase())) || s.label.includes(parameters.specialty));
+                if (sp) { handleSpecialty(sp); result = `تم اختيار ${sp.label}`; }
+                else { pushAi(`الاختصاصات المتاحة:`, { kind: 'specialty' }); result = 'showed specialty cards'; }
+              } else if (tool_name === 'select_governorate') {
+                const g = GOVERNORATES.find(x => parameters.governorate?.includes(x) || x.includes(parameters.governorate));
+                if (g) { handleGovernorate(g); result = `تم اختيار ${g}`; }
+                else { pushAi('اختر محافظتك:', { kind: 'governorate' }); result = 'showed governorate cards'; }
+              } else if (tool_name === 'show_clinics') {
+                pushAi('إليك العيادات المقترحة:', { kind: 'clinics', clinics: clinicsRef.current });
+                result = `${clinicsRef.current.length} clinics shown`;
+              } else if (tool_name === 'select_clinic') {
+                const c = clinicsRef.current.find(cl => cl.name.includes(parameters.clinic_name) || parameters.clinic_name?.includes(cl.name));
+                if (c) { handleClinic(c); result = `selected ${c.name}`; }
+                else result = 'clinic not found';
+              } else if (tool_name === 'pick_date') {
+                const d = new Date(parameters.date);
+                if (isNaN(d.getTime())) { pushAi('اختر اليوم:', { kind: 'date' }); result = 'showed dates'; }
+                else { handleDate(d.toISOString(), d.toLocaleDateString('ar-IQ')); result = `picked ${parameters.date}`; }
+              } else if (tool_name === 'pick_time') {
+                handleTime(parameters.time); result = `picked ${parameters.time}`;
+              } else if (tool_name === 'fill_patient_info') {
+                setBooking(prev => ({
+                  ...prev,
+                  patient: {
+                    name: parameters.name || prev.patient.name,
+                    phone: parameters.phone || prev.patient.phone,
+                    age: parameters.age || prev.patient.age,
+                    gender: (parameters.gender as any) || prev.patient.gender,
+                  }
+                }));
+                result = 'patient info updated. check if name and phone are filled, if not, ask for them.';
+              } else if (tool_name === 'confirm_booking') {
+                const b = bookingRef.current;
+                if (!b.patient.name || !b.patient.phone) {
+                  result = 'Error: Missing patient name or phone. Please ask the user for their full name and phone number to complete the booking.';
+                } else {
+                  await handleConfirmBooking(); 
+                  result = 'booking confirmed successfully. tell the user the appointment is confirmed and the clinic will contact them.';
+                }
+              } else {
+                result = 'Unknown tool';
+              }
+            } catch (err: any) {
+              result = `Error: ${err.message}`;
+            }
+
+            // Send tool result back to server
+            ws.send(JSON.stringify({
+              type: 'client_tool_result',
+              tool_call_id,
+              result: String(result)
+            }));
+          }
+        } catch (err) { console.warn('[ElevenLabs WS] parse error:', err); }
+      };
+
+      ws.onerror = (err) => {
+        console.error('[ElevenLabs WS] error:', err);
+        pushAi('خطأ في الاتصال بالمساعد الصوتي.');
+        stopVoiceMode();
+      };
+
+      ws.onclose = (ev) => {
+        console.log('[ElevenLabs WS] closed:', ev.code, ev.reason);
+        stream.getTracks().forEach(t => t.stop());
+        setVoiceMode(false);
+      };
+
+    } catch (e: any) {
+      console.error('[Voice] start error:', e);
+      if (e.name === 'NotAllowedError') {
+        pushAi('⚠️ يرجى السماح بالوصول للميكروفون من إعدادات المتصفح، ثم حاول مجدداً.');
+      } else {
+        pushAi('تعذر بدء المساعد الصوتي. تأكد من الاتصال بالإنترنت والميكروفون.');
+      }
       setIsConnectingVoice(false);
     }
-  };
-
-  const stopVoiceMode = async () => {
-    await conversation.endSession();
-    setVoiceMode(false);
   };
 
   // ============== Cards UI ==============
@@ -597,7 +699,7 @@ export const SmartDiagnosisPage: React.FC = () => {
                 <div className="font-bold text-gray-900">المساعد الذكي</div>
                 <div className="text-xs text-gray-500 flex items-center gap-1.5">
                   <span className={`w-2 h-2 rounded-full ${voiceMode ? 'bg-red-500 animate-pulse' : 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]'}`} />
-                  {voiceMode ? (conversation.isSpeaking ? 'يتحدث…' : 'يستمع…') : 'متصل وجاهز'}
+                  {voiceMode ? (isPlayingRef.current ? 'يتحدث…' : 'يستمع…') : 'متصل وجاهز'}
                 </div>
               </div>
             </div>
@@ -742,17 +844,27 @@ export const SmartDiagnosisPage: React.FC = () => {
           )}
 
           {voiceMode && (
-            <div className="border-t border-gray-100 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 text-center">
-              <div className="flex items-center justify-center gap-2">
+            <div className="border-t border-gray-100 p-6 bg-gradient-to-b from-white to-blue-50/50 text-center relative z-20 shadow-[0_-10px_20px_rgba(0,0,0,0.02)]">
+              {/* Transcript Display */}
+              <div className="mb-6 min-h-[3rem] flex items-end justify-center">
+                <p className="text-sm font-bold text-gray-800 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  {messages.filter(m => m.role === 'ai').pop()?.content?.replace(/🎙️ /g, '') || 'المساعد الصوتي متصل…'}
+                </p>
+              </div>
+
+              <div className="flex items-center justify-center gap-4">
+                <button onClick={stopVoiceMode} className="w-10 h-10 rounded-full bg-red-100 hover:bg-red-200 flex items-center justify-center text-red-600 transition-all shadow-sm">
+                  <X className="w-5 h-5" />
+                </button>
                 <div className="relative">
-                  <div className={`w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-blue-500 flex items-center justify-center text-white shadow-lg ${conversation.isSpeaking ? 'animate-pulse' : ''}`}>
-                    <Mic className="w-6 h-6" />
+                  <div className={`w-16 h-16 rounded-full bg-gradient-to-br from-blue-600 to-blue-500 flex items-center justify-center text-white shadow-xl ${isPlayingRef.current ? 'animate-pulse scale-110' : ''} transition-all duration-300`}>
+                    <Mic className="w-7 h-7" />
                   </div>
-                  <div className="absolute inset-0 rounded-full border-4 border-blue-300 animate-ping" />
+                  <div className="absolute inset-0 rounded-full border-4 border-blue-300 animate-ping opacity-50" />
                 </div>
-                <div className="text-xs font-bold text-blue-800">
-                  {conversation.isSpeaking ? 'المساعد يتحدث…' : 'تكلم الآن، أنا أستمع…'}
-                </div>
+              </div>
+              <div className="text-[10px] font-bold text-blue-400 mt-4">
+                جاري التحدث مع المساعد الصوتي
               </div>
             </div>
           )}
