@@ -358,11 +358,13 @@ export const SmartDiagnosisPage: React.FC = () => {
   const startVoiceMode = async () => {
     setIsConnectingVoice(true);
     try {
+      // طلب الإذن مسبقاً لضمان عدم حظر المتصفح للاتصال (WebRTC timeout fix)
+      try { await navigator.mediaDevices.getUserMedia({ audio: true }); } catch (err) { console.warn("Mic access delay", err); }
       await conversation.startSession({ agentId: ELEVENLABS_AGENT_ID });
       setVoiceMode(true);
     } catch (e) {
       console.error(e);
-      pushAi('تعذر الوصول للميكروفون. تأكد من السماح بالوصول.');
+      pushAi('تعذر بدء المساعد الصوتي. قد تكون هناك مشكلة في الاتصال بالخادم أو الصلاحيات.');
     } finally {
       setIsConnectingVoice(false);
     }
@@ -657,30 +659,7 @@ export const SmartDiagnosisPage: React.FC = () => {
                 </div>
               </div>
             )}
-            
-            {/* Large Talk Button (only shown when not floated and not in voice mode) */}
-            {!voiceMode && !showFloatingVoice && (
-              <div className="mt-8 mb-4 flex justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <button
-                  onClick={startVoiceMode}
-                  disabled={isConnectingVoice}
-                  className="group relative overflow-hidden bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600 text-white px-8 py-4 rounded-3xl font-bold flex items-center gap-3 shadow-xl hover:shadow-2xl hover:scale-[1.02] transition-all disabled:opacity-70 disabled:hover:scale-100 w-full max-w-sm justify-center border border-blue-400/30"
-                >
-                  <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
-                  {isConnectingVoice ? (
-                    <Loader2 className="w-6 h-6 animate-spin" />
-                  ) : (
-                    <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-md group-hover:scale-110 transition-transform shrink-0 shadow-inner">
-                      <Mic className="w-6 h-6" />
-                    </div>
-                  )}
-                  <div className="text-right">
-                    <div className="text-lg">تحدث مع المساعد</div>
-                    <div className="text-xs text-blue-100 font-normal mt-0.5">أسرع طريقة لإتمام حجزك</div>
-                  </div>
-                </button>
-              </div>
-            )}
+
 
             <div ref={messagesEndRef} className="h-4" />
           </div>
@@ -699,9 +678,33 @@ export const SmartDiagnosisPage: React.FC = () => {
             </div>
           )}
 
+          {/* Large Talk Button (Fixed above input) */}
+          {!voiceMode && !showFloatingVoice && (
+            <div className="bg-white/80 backdrop-blur-md px-4 py-3 border-t border-gray-100 flex justify-center animate-in fade-in slide-in-from-bottom-4 duration-500 z-10 relative shadow-[0_-10px_20px_rgba(0,0,0,0.02)]">
+              <button
+                onClick={startVoiceMode}
+                disabled={isConnectingVoice}
+                className="group relative overflow-hidden bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600 text-white px-8 py-3 rounded-3xl font-bold flex items-center gap-3 shadow-xl hover:shadow-2xl hover:scale-[1.02] transition-all disabled:opacity-70 disabled:hover:scale-100 w-full max-w-sm justify-center border border-blue-400/30"
+              >
+                <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                {isConnectingVoice ? (
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                ) : (
+                  <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-md group-hover:scale-110 transition-transform shrink-0 shadow-inner">
+                    <Mic className="w-5 h-5" />
+                  </div>
+                )}
+                <div className="text-right">
+                  <div className="text-base leading-tight">تحدث مع المساعد</div>
+                  <div className="text-[10px] text-blue-100 font-normal mt-0.5">أسرع طريقة لإتمام حجزك</div>
+                </div>
+              </button>
+            </div>
+          )}
+
           {/* Input */}
           {!voiceMode && (
-            <div className="border-t border-gray-100 p-3">
+            <div className="border-t border-gray-100 p-3 bg-white relative z-20">
               {imagePreview && (
                 <div className="flex items-center gap-2 mb-2 p-2 bg-blue-50 rounded-lg w-fit border border-blue-100">
                   <img src={imagePreview} alt="" className="w-10 h-10 object-cover rounded" />

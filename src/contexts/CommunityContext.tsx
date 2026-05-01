@@ -187,7 +187,7 @@ export const CommunityProvider: React.FC<{ children: ReactNode }> = ({ children 
                 // Get Current User
                 const { data: { session } } = await supabase.auth.getSession();
                 if (!mountedRef.current) return;
-                const userId = session?.user?.id || 'mock-user-id';
+                const userId = session?.user?.id || '00000000-0000-0000-0000-000000000000';
                 setCurrentUser(session?.user);
 
                 const [

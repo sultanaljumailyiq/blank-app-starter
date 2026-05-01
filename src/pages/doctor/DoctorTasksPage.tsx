@@ -131,7 +131,7 @@ export const DoctorTasksPage: React.FC = () => {
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
 
   // User Context Simulation for Development if Auth not ready
-  const currentUser = user || { id: 'mock-user-id', name: 'د. محمد الخزرجي', role: 'doctor' as any };
+  const currentUser = user || { id: '00000000-0000-0000-0000-000000000000', name: 'د. محمد الخزرجي', role: 'doctor' as any };
   const isOwner = user?.email?.includes('demo') || true; // Force owner for testing/demo
   const myClinicId = selectedClinicId === 'all' ? '101' : selectedClinicId;
 
