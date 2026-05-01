@@ -83,6 +83,8 @@ export const SmartDiagnosisPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState<Step>('intro');
   const [voiceMode, setVoiceMode] = useState(false);
+  const voiceModeRef = useRef(false);
+  useEffect(() => { voiceModeRef.current = voiceMode; }, [voiceMode]);
   const [isConnectingVoice, setIsConnectingVoice] = useState(false);
   const [booking, setBooking] = useState<BookingState>({
     patient: { name: '', phone: '', age: '', gender: '' }
@@ -119,10 +121,28 @@ export const SmartDiagnosisPage: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
-  const pushAi = (content: string, card?: CardKind) =>
+  const pushAi = (content: string, card?: CardKind) => {
+    // نستخدم القيمة المباشرة لـ voiceModeRef لتجنب مشاكل Closure
+    if (voiceModeRef.current && !card) {
+      setLastVoiceMsg(content.replace('🎙️ ', ''));
+      return;
+    }
     setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', content, card }]);
+    if (voiceModeRef.current && content) {
+      setLastVoiceMsg(content.replace('🎙️ ', ''));
+    }
+  };
+
   const pushUser = (content: string, image?: string | null) =>
     setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'user', content, image }]);
+
+  // استخدام Refs للوظائف لضمان وصولها للـ WebSocket بأحدث نسخة
+  const pushAiRef = useRef(pushAi);
+  const pushUserRef = useRef(pushUser);
+  useEffect(() => {
+    pushAiRef.current = pushAi;
+    pushUserRef.current = pushUser;
+  }, [pushAi, pushUser]);
 
   // Filter clinics by current selection
   const filteredClinics = useMemo(() => {
@@ -139,30 +159,30 @@ export const SmartDiagnosisPage: React.FC = () => {
   }, [clinics, booking.governorate, booking.specialty]);
 
   // ============== Step Handlers ==============
-  const handleSpecialty = (sp: typeof SPECIALTIES[number]) => {
+  const handleSpecialty = (sp: typeof SPECIALTIES[number], isVoice = false) => {
     setBooking(prev => ({ ...prev, specialty: sp }));
-    pushUser(`أحتاج ${sp.label}`);
+    if (!isVoice) pushUser(`أحتاج ${sp.label}`);
+    
+    setStep('governorate');
     setTimeout(() => {
-      pushAi(`ممتاز! اختر محافظتك لنعرض لك أقرب العيادات المتخصصة في ${sp.label}:`, { kind: 'governorate' });
-      setStep('governorate');
-    }, 300);
+      pushAiRef.current(`📋 تم اختيار ${sp.label}. يرجى اختيار المحافظة:`, { kind: 'governorate' });
+    }, 200); 
   };
 
-  const handleGovernorate = (gov: string) => {
+  const handleGovernorate = (gov: string, isVoice = false) => {
     setBooking(prev => ({ ...prev, governorate: gov }));
-    pushUser(`أنا في ${gov}`);
+    if (!isVoice) pushUser(`أنا في ${gov}`);
+    
+    setStep('clinics');
     setTimeout(() => {
       const list = clinics
         .filter(c => (c.governorate || '').includes(gov))
         .filter(c => !booking.specialty || c.specialties?.some(s => booking.specialty!.keys.some(k => s.toLowerCase().includes(k.toLowerCase()))) || c.services?.some(s => booking.specialty!.keys.some(k => s.toLowerCase().includes(k.toLowerCase()))))
         .slice(0, 8);
-      if (list.length === 0) {
-        pushAi(`لم أجد عيادات في ${gov} مطابقة تماماً. إليك أفضل العيادات المتاحة:`, { kind: 'clinics', clinics: clinics.slice(0, 6) });
-      } else {
-        pushAi(`وجدت لك ${list.length} عيادة 👇 اختر العيادة المناسبة:`, { kind: 'clinics', clinics: list });
-      }
-      setStep('clinics');
-    }, 300);
+      
+      const statusMsg = `📍 محافظة ${gov}. إليك العيادات المتاحة:`;
+      pushAiRef.current(statusMsg, { kind: 'clinics', clinics: list.length > 0 ? list : clinics.slice(0, 6) });
+    }, 200);
   };
 
   const handleClinic = (clinic: Clinic) => {
@@ -438,10 +458,12 @@ export const SmartDiagnosisPage: React.FC = () => {
             }
           } else if (msg.type === 'agent_response' || msg.type === 'agent_response_correction') {
             const text = msg.agent_response_event?.agent_response || msg.agent_response || '';
-            if (text) { pushAi(`🎙️ ${text}`); setLastVoiceMsg(text); }
+            if (text) { 
+              pushAiRef.current(`🎙️ ${text}`); 
+            }
           } else if (msg.type === 'user_transcript') {
             const text = msg.user_transcription_event?.user_transcript || '';
-            if (text) pushUser(`🎙️ ${text}`);
+            if (text) pushUserRef.current(`🎙️ ${text}`);
           } else if (msg.type === 'interruption') {
             audioQueueRef.current = [];
             isPlayingRef.current = false;
@@ -457,25 +479,25 @@ export const SmartDiagnosisPage: React.FC = () => {
                 const sp = SPECIALTIES.find(s => 
                   s.keys.some(k => inputSpec.includes(k.toLowerCase()) || k.toLowerCase().includes(inputSpec)) || 
                   s.label.includes(inputSpec) || 
-                  inputSpec.includes(s.label)
+                  inputSpec.includes(s.label) ||
+                  (inputSpec.includes('ألم') && s.id === 'general') ||
+                  (inputSpec.includes('وجع') && s.id === 'general')
                 );
                 if (sp) { 
-                  pushAi(`🔄 تم التعرف على الاختصاص: ${sp.label}`);
-                  handleSpecialty(sp); 
-                  result = `Success: Selected ${sp.label}`; 
+                  handleSpecialty(sp, true); 
+                  result = `Success: Selected specialty ${sp.label}. UI is now showing governorate selection card.`; 
                 } else { 
-                  pushAi(`لم أستطع مطابقة "${inputSpec}" مع الاختصاصات المتاحة.`, { kind: 'specialty' }); 
+                  pushAi(`لم أستطع مطابقة "${inputSpec}" مع الاختصاصات المتاحة. يرجى الاختيار من القائمة:`, { kind: 'specialty' }); 
                   result = 'Error: Specialty not matched'; 
                 }
               } else if (tool_name === 'select_governorate') {
                 const inputGov = parameters.governorate?.trim() || '';
                 const g = GOVERNORATES.find(x => inputGov.includes(x) || x.includes(inputGov));
                 if (g) { 
-                  pushAi(`🔄 تم تحديد المحافظة: ${g}`);
-                  handleGovernorate(g); 
-                  result = `Success: Selected ${g}`; 
+                  handleGovernorate(g, true); 
+                  result = `Success: Selected governorate ${g}. UI is now showing clinics list.`; 
                 } else { 
-                  pushAi(`المحافظة "${inputGov}" غير موجودة، يرجى الاختيار من القائمة:`, { kind: 'governorate' }); 
+                  pushAi(`المحافظة "${inputGov}" غير متوفرة حالياً، يرجى الاختيار من القائمة:`, { kind: 'governorate' }); 
                   result = 'Error: Governorate not matched'; 
                 }
               } else if (tool_name === 'show_clinics') {
@@ -896,6 +918,23 @@ export const SmartDiagnosisPage: React.FC = () => {
             </div>
           )}
 
+          {/* Voice Bubble Floating above Input */}
+          {voiceMode && lastVoiceMsg && (
+            <div className="absolute bottom-[100%] left-0 right-0 px-4 pb-3 animate-in fade-in slide-in-from-bottom-4 duration-500 z-30 pointer-events-none">
+              <div className="bg-white/90 backdrop-blur-xl border border-indigo-100/50 rounded-2xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.08)] flex items-start gap-3 pointer-events-auto max-w-[95%] mx-auto">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-lg shadow-indigo-200">
+                  <Mic className="w-4 h-4 text-white" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-[10px] text-indigo-400 font-bold mb-0.5 uppercase tracking-wider">المساعد الصوتي</div>
+                  <p className="text-xs text-gray-800 font-medium leading-relaxed text-right">{lastVoiceMsg}</p>
+                </div>
+              </div>
+              {/* Triangle pointer */}
+              <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[8px] border-t-white/90 mx-auto mt-[-1px] drop-shadow-sm" />
+            </div>
+          )}
+
           {/* Input */}
           <div className="border-t border-gray-100 p-3 bg-white relative z-20">
             {imagePreview && (
@@ -944,16 +983,7 @@ export const SmartDiagnosisPage: React.FC = () => {
             </div>
           </div>
 
-          {voiceMode && lastVoiceMsg && (
-            <div className="px-4 pt-2 pb-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <div className="bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-100 rounded-2xl px-4 py-2.5 flex items-start gap-2">
-                <div className="w-5 h-5 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
-                  <Mic className="w-2.5 h-2.5 text-white" />
-                </div>
-                <p className="text-xs text-indigo-800 font-medium leading-relaxed flex-1 text-right">{lastVoiceMsg}</p>
-              </div>
-            </div>
-          )}
+
         </div>
       </div>
     </div>
