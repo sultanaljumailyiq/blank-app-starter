@@ -26,7 +26,7 @@ const SPECIALTIES = [
 ];
 
 const GOVERNORATES = [
-  'بغداد', 'أربيل', 'البصرة', 'الموصل', 'النجف', 'كربلاء', 'صلاح الدين',
+  'بغداد', 'أربيل', 'البصرة', 'الموصل', 'النجف', 'كربلاء', 'صلاح الدين', 
   'الأنبار', 'ذي قار', 'ميسان', 'كركوك', 'ديالى', 'بابل', 'واسط', 'المثنى', 'القادسية', 'دهوك', 'السليمانية'
 ];
 
@@ -88,20 +88,6 @@ export const SmartDiagnosisPage: React.FC = () => {
   const [booking, setBooking] = useState<BookingState>({
     patient: { name: '', phone: '', age: '', gender: '' }
   });
-
-  // Filter clinics by current selection
-  const filteredClinics = useMemo(() => {
-    let list = clinics;
-    if (booking.governorate) list = list.filter(c => (c.governorate || '').includes(booking.governorate!));
-    if (booking.specialty) {
-      const keys = booking.specialty.keys;
-      list = list.filter(c =>
-        c.specialties?.some(s => keys.some(k => s.toLowerCase().includes(k.toLowerCase()))) ||
-        c.services?.some(s => keys.some(k => s.toLowerCase().includes(k.toLowerCase())))
-      );
-    }
-    return list.slice(0, 8);
-  }, [clinics, booking.governorate, booking.specialty]);
   const [sessionId] = useState<string>(() => {
     let sid = localStorage.getItem('smart_diagnosis_session_id');
     if (!sid) { sid = crypto.randomUUID(); localStorage.setItem('smart_diagnosis_session_id', sid); }
@@ -111,21 +97,14 @@ export const SmartDiagnosisPage: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
-  const pendingCardRef = useRef<{ kind: CardKind['kind']; clinics?: Clinic[] } | null>(null);
-  const [voiceCard, setVoiceCard] = useState<CardKind | null>(null);
   const [isListening, setIsListening] = useState(false);
   const initialMessageSent = useRef(false);
 
-  // Refs to bookingState/clinics/filtered for ElevenLabs client tools (closures)
+  // Refs to bookingState/clinics for ElevenLabs client tools (closures)
   const bookingRef = useRef(booking);
   const clinicsRef = useRef(clinics);
-  const filteredClinicsRef = useRef(filteredClinics);
-
-  useEffect(() => {
-    bookingRef.current = booking;
-    clinicsRef.current = clinics;
-    filteredClinicsRef.current = filteredClinics;
-  }, [booking, clinics, filteredClinics]);
+  useEffect(() => { bookingRef.current = booking; }, [booking]);
+  useEffect(() => { clinicsRef.current = clinics; }, [clinics]);
 
   // Initial greeting + first card
   useEffect(() => {
@@ -141,167 +120,87 @@ export const SmartDiagnosisPage: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
-  // Fallback sync: Sync voiceCard with step to ensure we always have a current card
-  useEffect(() => {
-    if (voiceMode) {
-      if (step === 'specialty' && (!voiceCard || voiceCard.kind !== 'specialty')) setVoiceCard({ kind: 'specialty' });
-      else if (step === 'governorate' && (!voiceCard || voiceCard.kind !== 'governorate')) setVoiceCard({ kind: 'governorate' });
-      else if (step === 'clinics' && (!voiceCard || voiceCard.kind !== 'clinics')) setVoiceCard({ kind: 'clinics', clinics: filteredClinics });
-      else if (step === 'date' && (!voiceCard || voiceCard.kind !== 'date')) setVoiceCard({ kind: 'date' });
-      else if (step === 'time' && (!voiceCard || voiceCard.kind !== 'time')) setVoiceCard({ kind: 'time' });
-      else if (step === 'patient' && (!voiceCard || voiceCard.kind !== 'patient')) setVoiceCard({ kind: 'patient' });
-    }
-  }, [voiceMode, step, filteredClinics, voiceCard]);
-
-  const cleanPromptTags = (text: string) => {
-    return text.replace(/\[.*?\]/g, '').trim();
-  };
-
   const pushAi = (content: string, card?: CardKind) => {
-    const addMsg = (c: string, cd?: CardKind): string => {
-      const id = crypto.randomUUID();
-      setMessages(prev => [...prev, { id, role: 'ai', content: c, card: cd }]);
-      return id;
-    };
-
-    if (voiceModeRef.current) {
-      // Always trigger speech for AI messages in voice mode
-      const cleanText = cleanPromptTags(content.replace('🎙️ ', ''));
-      setLastVoiceMsg(cleanText);
-      
-      if (card) {
-        // Queue the card metadata to be attached to the next incoming WS message
-        pendingCardRef.current = { kind: card.kind, clinics: (card as any).clinics };
-      }
+    // نستخدم القيمة المباشرة لـ voiceModeRef لتجنب مشاكل Closure
+    // البطاقات يجب أن تظهر دائماً في الدردشة حتى في وضع الصوت
+    if (voiceModeRef.current && !card) {
+      setLastVoiceMsg(content.replace('🎙️ ', ''));
+      return;
     }
-
-    addMsg(content, card);
+    
+    setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', content, card }]);
+    
+    if (voiceModeRef.current && content) {
+      setLastVoiceMsg(content.replace('🎙️ ', ''));
+    }
   };
 
   const pushUser = (content: string, image?: string | null) =>
     setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'user', content, image }]);
 
+  // استخدام Refs للوظائف لضمان وصولها للـ WebSocket بأحدث نسخة
+  const pushAiRef = useRef(pushAi);
+  const pushUserRef = useRef(pushUser);
+  useEffect(() => {
+    pushAiRef.current = pushAi;
+    pushUserRef.current = pushUser;
+  }, [pushAi, pushUser]);
 
+  // Filter clinics by current selection
+  const filteredClinics = useMemo(() => {
+    let list = clinics;
+    if (booking.governorate) list = list.filter(c => (c.governorate || '').includes(booking.governorate!));
+    if (booking.specialty) {
+      const keys = booking.specialty.keys;
+      list = list.filter(c =>
+        c.specialties?.some(s => keys.some(k => s.toLowerCase().includes(k.toLowerCase()))) ||
+        c.services?.some(s => keys.some(k => s.toLowerCase().includes(k.toLowerCase())))
+      );
+    }
+    return list.slice(0, 8);
+  }, [clinics, booking.governorate, booking.specialty]);
 
   // ============== Step Handlers ==============
   const handleSpecialty = (sp: typeof SPECIALTIES[number], isVoice = false) => {
-    setBooking(prev => {
-      const next = { ...prev, specialty: sp };
-      bookingRef.current = next;
-      return next;
-    });
+    setBooking(prev => ({ ...prev, specialty: sp }));
     if (!isVoice) pushUser(`أحتاج ${sp.label}`);
 
     setStep('governorate');
-    const msg = `📋 تم اختيار ${sp.label}. يرجى اختيار المحافظة:`;
-    if (isVoice) {
-      const cd = { kind: 'governorate' } as CardKind;
-      pendingCardRef.current = { kind: cd.kind };
-      setVoiceCard(cd);
-    } else {
-      setTimeout(() => pushAiRef.current(msg, { kind: 'governorate' }), 200);
-    }
+    pushAi(`📋 تم اختيار ${sp.label}. يرجى اختيار المحافظة:`, { kind: 'governorate' });
   };
 
   const handleGovernorate = (gov: string, isVoice = false) => {
-    setBooking(prev => {
-      const next = { ...prev, governorate: gov };
-      bookingRef.current = next;
-      return next;
-    });
+    setBooking(prev => ({ ...prev, governorate: gov }));
     if (!isVoice) pushUser(`أنا في ${gov}`);
-
+    
     setStep('clinics');
     const statusMsg = `📍 محافظة ${gov}. إليك العيادات المتاحة:`;
-
-    const execute = () => {
-      const b = bookingRef.current;
-      const list = clinicsRef.current
-        .filter(c => (c.governorate || '').includes(gov))
-        .filter(c => !b.specialty ||
-          c.specialties?.some(s => b.specialty!.keys.some(k => s.toLowerCase().includes(k.toLowerCase()))) ||
-          c.services?.some(s => b.specialty!.keys.some(k => s.toLowerCase().includes(k.toLowerCase())))
-        )
-        .slice(0, 8);
-
-      if (list.length > 0) {
-        if (isVoice) {
-          const cd = { kind: 'clinics', clinics: list } as CardKind;
-          pendingCardRef.current = { kind: cd.kind, clinics: list };
-        } else {
-          pushAi(statusMsg, { kind: 'clinics', clinics: list });
-        }
-      } else {
-        const errorMsg = `📍 محافظة ${gov}. عذراً، لا توجد عيادات مسجلة حالياً تطابق اختيارك في هذه المنطقة. هل تود اختيار محافظة أخرى؟`;
-        if (isVoice) {
-          const cd = { kind: 'governorate' } as CardKind;
-          pendingCardRef.current = { kind: cd.kind };
-        } else {
-          pushAi(errorMsg, { kind: 'governorate' });
-        }
-      }
-    };
-
-    if (isVoice) {
-      execute();
-    } else {
-      setTimeout(execute, 200);
-    }
+    pushAi(statusMsg, { kind: 'clinics', clinics: clinics.filter(c => (c.governorate || '').includes(gov)).slice(0, 8) });
   };
 
-  const handleClinic = (clinic: Clinic, isVoice = false) => {
+  const handleClinic = (clinic: Clinic) => {
     setBooking(prev => ({ ...prev, clinic }));
-    if (!isVoice) pushUser(`اخترت ${clinic.name}`);
-
-    const msg = `اختيار رائع! 👏\nالآن اختر اليوم المناسب لموعدك:`;
-    if (isVoice) {
-      pendingCardRef.current = { kind: 'date' };
-    } else {
-      setTimeout(() => pushAiRef.current(msg, { kind: 'date' }), 200);
-    }
+    pushUser(`اخترت ${clinic.name}`);
+    pushAi(`اختيار رائع! 👏\nالآن اختر اليوم المناسب لموعدك:`, { kind: 'date' });
     setStep('date');
   };
 
-  const handleDate = (dateISO: string, label: string, isVoice = false) => {
+  const handleDate = (dateISO: string, label: string) => {
     setBooking(prev => ({ ...prev, date: dateISO }));
-    if (!isVoice) pushUser(`أريد يوم ${label}`);
-
-    const msg = 'اختر الوقت المفضل لك:';
-    const execute = () => {
-      if (isVoice) {
-        pendingCardRef.current = { kind: 'time' };
-      } else {
-        pushAi(msg, { kind: 'time' });
-      }
+    pushUser(`أريد يوم ${label}`);
+    setTimeout(() => {
+      pushAi('اختر الوقت المفضل لك:', { kind: 'time' });
       setStep('time');
-    };
-
-    if (isVoice) {
-      execute();
-    } else {
-      setTimeout(execute, 300);
-    }
+    }, 300);
   };
 
-  const handleTime = (time: string, isVoice = false) => {
+  const handleTime = (time: string) => {
     setBooking(prev => ({ ...prev, time }));
-    if (!isVoice) pushUser(`الساعة ${time}`);
-
-    const msg = 'ممتاز! آخر خطوة — أدخل بياناتك لتأكيد الحجز:';
-    const execute = () => {
-      if (isVoice) {
-        pendingCardRef.current = { kind: 'patient' };
-      } else {
-        pushAi(msg, { kind: 'patient' });
-      }
+    pushUser(`الساعة ${time}`);
+    setTimeout(() => {
+      pushAi('ممتاز! آخر خطوة — أدخل بياناتك لتأكيد الحجز:', { kind: 'patient' });
       setStep('patient');
-    };
-
-    if (isVoice) {
-      execute();
-    } else {
-      setTimeout(execute, 300);
-    }
+    }, 300);
   };
 
   const handleConfirmBooking = async () => {
@@ -338,27 +237,6 @@ export const SmartDiagnosisPage: React.FC = () => {
       setIsLoading(false);
     }
   };
-
-  // استخدام Refs للوظائف لضمان وصولها للـ WebSocket بأحدث نسخة
-  const pushAiRef = useRef(pushAi);
-  const pushUserRef = useRef(pushUser);
-  const handleSpecialtyRef = useRef(handleSpecialty);
-  const handleGovernorateRef = useRef(handleGovernorate);
-  const handleClinicRef = useRef(handleClinic);
-  const handleDateRef = useRef(handleDate);
-  const handleTimeRef = useRef(handleTime);
-  const handleConfirmBookingRef = useRef(handleConfirmBooking);
-
-  useEffect(() => {
-    pushAiRef.current = pushAi;
-    pushUserRef.current = pushUser;
-    handleSpecialtyRef.current = handleSpecialty;
-    handleGovernorateRef.current = handleGovernorate;
-    handleClinicRef.current = handleClinic;
-    handleDateRef.current = handleDate;
-    handleTimeRef.current = handleTime;
-    handleConfirmBookingRef.current = handleConfirmBooking;
-  }, [pushAi, pushUser, handleSpecialty, handleGovernorate, handleClinic, handleDate, handleTime, handleConfirmBooking]);
 
   // ============== Free Chat (text/image) ==============
   const handleSendMessage = async () => {
@@ -504,33 +382,25 @@ export const SmartDiagnosisPage: React.FC = () => {
         setVoiceMode(true);
         voiceModeRef.current = true;
         setIsConnectingVoice(false);
-        pushAiRef.current('المساعد الصوتي متصل، تكلم الآن…');
+        pushAiRef.current('🎙️ المساعد الصوتي متصل، تكلم الآن…');
 
         // إرسال إعدادات الجلسة — نطلب PCM_22050 كمخرج صوتي
         ws.send(JSON.stringify({
           type: 'conversation_initiation_client_data',
           conversation_config_override: {
             agent: {
-              first_message: 'أهلاً بك في منصة طب الأسنان! أنا مساعدك الذكي. بشنو أقدر أساعدك اليوم؟',
+              first_message: 'أهلاً بك في منصة طب الأسنان الذكية! أنا مساعدك الصوتي. ما الذي تحتاجه؟',
               language: 'ar',
               prompt: {
-                prompt: `أنت "المساعد الذكي لمنصة طب الأسنان"، خبير في حجز مواعيد العيادات.
-تحدث بلهجة عراقية مهذبة واحترافية (لهجة بيضاء).
-
-قواعد العمل:
-1. لا تكرر كلامك. إذا قمت باستدعاء أداة، انتظر النتيجة ثم تحدث مرة واحدة فقط.
-2. لا تقل "لحظات" أو "أبحث لك" إلا إذا كان البحث سيستغرق وقتاً طويلاً. يفضل الانتقال مباشرة للنتائج.
-3. عند اختيار التخصص (select_specialty)، سيظهر للمستخدم قائمة المحافظات تلقائياً. اسأله مباشرة "في أي محافظة أنت؟".
-4. عند اختيار المحافظة (select_governorate)، سيظهر للمستخدم قائمة العيادات. قل له "إليك العيادات المتوفرة، أي واحدة تفضل؟".
-5. كن مختصراً، ودوداً، ومباشراً.
-
-الخطوات:
-1. ابدأ بالترحيب واسأل عن التخصص المطلوب.
-2. بعد تحديد التخصص، اسأل عن المحافظة.
-3. بعد المحافظة، اعرض العيادات واسأله يختار واحدة.
-4. اتبع تدفق الحجز (تاريخ، وقت، معلومات المريض) حتى التأكيد النهائي.
-
-إذا واجهت أي مشكلة، اعتذر بلباقة واطلب من المستخدم المحاولة مرة أخرى أو اختيار خيار من الظاهر على الشاشة.`
+                prompt: `أنت المساعد الصوتي الرسمي لمنصة طب الأسنان في العراق. تتحدث بلغة عربية عراقية ودودة ومحترفة باسم المنصة.
+مهمتك: مساعدة المريض في حجز موعد عبر:
+1) سؤاله عن المشكلة/الاختصاص (عام، تقويم، أطفال، جراحة، تجميل، طوارئ) → استخدم select_specialty
+2) سؤاله عن المحافظة → استخدم select_governorate
+3) عرض العيادات المسجلة → استخدم show_clinics ثم select_clinic عند اختياره
+4) سؤاله عن اليوم والوقت المناسب → pick_date و pick_time
+5) أخذ بياناته (الاسم، رقم الهاتف، العمر، الجنس) → fill_patient_info
+6) تأكيد الحجز → confirm_booking
+كن مختصراً ومتعاطفاً. لا تعطِ تشخيصاً طبياً نهائياً. اقترح دائماً عيادة من قاعدة بيانات المنصة.`
               }
             }
           }
@@ -582,22 +452,11 @@ export const SmartDiagnosisPage: React.FC = () => {
           } else if (msg.type === 'agent_response' || msg.type === 'agent_response_correction') {
             const text = msg.agent_response_event?.agent_response || msg.agent_response || '';
             if (text) {
-              const id = crypto.randomUUID();
-              const pending = pendingCardRef.current;
-              
-              let cardData: CardKind | undefined = undefined;
-              if (pending) {
-                cardData = { kind: pending.kind, clinics: pending.clinics } as CardKind;
-                pendingCardRef.current = null; // Clear ONLY when consumed
-              }
-              
-              const cleanText = cleanPromptTags(text);
-              setMessages(prev => [...prev, { id, role: 'ai', content: `🎙️ ${cleanText}`, card: cardData }]);
-              if (voiceModeRef.current) setLastVoiceMsg(cleanText);
+              pushAiRef.current(`🎙️ ${text}`);
             }
           } else if (msg.type === 'user_transcript') {
             const text = msg.user_transcription_event?.user_transcript || '';
-            if (text) pushUserRef.current(text);
+            if (text) pushUserRef.current(`🎙️ ${text}`);
           } else if (msg.type === 'interruption') {
             audioQueueRef.current = [];
             isPlayingRef.current = false;
@@ -618,118 +477,61 @@ export const SmartDiagnosisPage: React.FC = () => {
                   inputSpec.includes(s.label)
                 );
                 if (sp) {
-                  handleSpecialtyRef.current(sp, true);
-                  // تأكيد حجز بطاقة المحافظة
-                  pendingCardRef.current = { kind: 'governorate' };
-                  result = `Success: Selected specialty ${sp.label}. UI step updated to governorate. Now ask the user for their governorate.`;
+                  handleSpecialty(sp, true);
+                  result = `Success: Selected specialty ${sp.label}. UI step updated to governorate.`;
                 } else {
-                  console.warn('[Tool] Specialty match failed for:', inputSpec);
-                  pushAiRef.current(`لم أستطع مطابقة "${inputSpec}" مع الاختصاصات المتاحة. يرجى الاختيار من القائمة:`, { kind: 'specialty' });
+                  pushAi(`لم أستطع مطابقة "${inputSpec}" مع الاختصاصات المتاحة. يرجى الاختيار من القائمة:`, { kind: 'specialty' });
                   result = 'Error: Specialty not matched';
                 }
               } else if (tool_name === 'select_governorate') {
                 const inputGov = (parameters.governorate_name || parameters.governorate || parameters.name || '').trim();
-                console.log('[Tool] select_governorate input:', inputGov);
-                if (!inputGov) {
-                  result = 'Error: No governorate name provided. Please ask the user for their governorate.';
+                const g = GOVERNORATES.find(x => 
+                  inputGov.includes(x) || x.includes(inputGov) || 
+                  (inputGov.includes('تكريت') && x === 'صلاح الدين') ||
+                  (inputGov.includes('الرمادي') && x === 'الأنبار') ||
+                  (inputGov.includes('الحلة') && x === 'بابل') ||
+                  (inputGov.includes('العمارة') && x === 'ميسان') ||
+                  (inputGov.includes('الناصرية') && x === 'ذي قار')
+                );
+                if (g) {
+                  handleGovernorate(g, true);
+                  result = `Success: Selected governorate ${g}. UI step updated to clinics.`;
                 } else {
-                  // وظيفة لتطبيع النص العربي (إزالة الحركات، توحيد الألف والياء)
-                  const normalize = (s: string) => 
-                    s.replace(/[.\s🎙️]/g, '')
-                     .replace(/[أإآ]/g, 'ا')
-                     .replace(/ة/g, 'ه')
-                     .replace(/ى/g, 'ي')
-                     .replace(/ئ/g, 'ي')
-                     .replace(/ؤ/g, 'و');
-
-                  const cleanInput = normalize(inputGov);
-                  console.log('[Tool] Normalized input:', cleanInput);
-
-                  const g = GOVERNORATES.find(x => {
-                    const nx = normalize(x);
-                    return cleanInput.includes(nx) || nx.includes(cleanInput) ||
-                           (cleanInput.includes('صلاح') && x === 'صلاح الدين') ||
-                           (cleanInput.includes('تكريت') && x === 'صلاح الدين') ||
-                           (cleanInput.includes('salah') && x === 'صلاح الدين');
-                  }) || GOVERNORATES.find(x => {
-                    // محاولة أخيرة للمطابقة المرنة جداً
-                    if (cleanInput.length < 3) return false;
-                    return x.includes(inputGov) || inputGov.includes(x);
-                  });
-                  
-                  if (g) {
-                    console.log('[Tool] Matched governorate:', g);
-                    handleGovernorateRef.current(g, true);
-                    const b = bookingRef.current;
-                    const list = clinicsRef.current
-                      .filter(c => (c.governorate || '').includes(g))
-                      .filter(c => !b.specialty || 
-                        c.specialties?.some(s => b.specialty!.keys.some(k => s.toLowerCase().includes(k.toLowerCase()))) || 
-                        c.services?.some(s => b.specialty!.keys.some(k => s.toLowerCase().includes(k.toLowerCase())))
-                      ).slice(0, 8);
-                    
-                    const names = list.map(c => c.name).join('، ');
-                    // تأكيد حجز البطاقة
-                    const cd = { kind: 'clinics', clinics: list } as CardKind;
-                    pendingCardRef.current = { kind: cd.kind, clinics: list };
-                    setVoiceCard(cd);
-                    
-                    result = list.length > 0 
-                      ? `Success: Selected ${g}. Found clinics: ${names}. Mention ${g} and these clinics to the user.`
-                      : `Success: Selected ${g} but no clinics found. Ask user if they want to try another area.`;
-                  } else {
-                    console.warn('[Tool] Match failed for:', inputGov, 'Params:', JSON.stringify(parameters));
-                    result = `Error: Could not match "${inputGov}" to any Iraqi governorate. Ask user to clarify or choose from the list.`;
-                  }
+                  pushAi(`المحافظة "${inputGov}" غير متوفرة حالياً في القائمة، يرجى الاختيار من هذه المحافظات:`, { kind: 'governorate' });
+                  result = 'Error: Governorate not matched';
                 }
               } else if (tool_name === 'show_clinics') {
                 setStep('clinics');
-                const list = filteredClinicsRef.current;
-                if (list.length > 0) {
-                  const names = list.map(c => c.name).join('، ');
-                  pushAiRef.current(`إليك العيادات المتاحة: ${names}`, { kind: 'clinics', clinics: list });
-                  result = `Success: Showed ${list.length} clinics: ${names}. Introduce them to the patient and help them choose.`;
-                } else {
-                  pushAiRef.current('❌ عذراً، لم أجد عيادات تطابق بحثك حالياً.', { kind: 'governorate' });
-                  result = 'Error: No clinics found matching search.';
-                }
+                pushAi('🔄 جاري عرض العيادات المتاحة في منطقتك...', { kind: 'clinics', clinics: clinicsRef.current });
+                result = `Success: ${clinicsRef.current.length} clinics shown in UI.`;
               } else if (tool_name === 'select_clinic') {
-                const inputClinic = (parameters.clinic_name || parameters.clinic_id || parameters.name || '').toLowerCase().trim();
-                const cleanInput = inputClinic.replace('عيادة ', '').replace('مركز ', '');
-                const c = clinicsRef.current.find(cl => {
-                  const cleanName = cl.name.toLowerCase().replace('عيادة ', '').replace('مركز ', '');
-                  return cl.name.toLowerCase().includes(inputClinic) ||
-                    inputClinic.includes(cl.name.toLowerCase()) ||
-                    cleanName.includes(cleanInput) ||
-                    cleanInput.includes(cleanName);
-                });
+                const inputClinic = (parameters.clinic_name || parameters.clinic_id || parameters.name || '').toLowerCase();
+                const c = clinicsRef.current.find(cl =>
+                  cl.name.toLowerCase().includes(inputClinic) ||
+                  inputClinic.includes(cl.name.toLowerCase()) ||
+                  cl.id === inputClinic
+                );
                 if (c) {
-                  handleClinicRef.current(c, true);
-                  const cd = { kind: 'date' } as CardKind;
-                  pendingCardRef.current = { kind: cd.kind };
-                  setVoiceCard(cd);
-                  result = `Success: Selected clinic ${c.name}. Now ask the user to pick a date from the calendar.`;
+                  handleClinic(c);
+                  result = `Success: Selected clinic ${c.name}. UI step updated to date selection.`;
                 } else {
-                  result = `Error: Clinic "${inputClinic}" not found. Please choose from: ${filteredClinicsRef.current.map(x => x.name).join(', ')}`;
+                  pushAi(`لم أجد عيادة باسم "${inputClinic}". يرجى الاختيار من القائمة:`, { kind: 'clinics', clinics: clinicsRef.current });
+                  result = 'Error: Clinic not found';
                 }
               } else if (tool_name === 'pick_date') {
                 const d = new Date(parameters.date);
                 if (isNaN(d.getTime())) {
-                  pushAiRef.current('يرجى اختيار تاريخ صحيح:', { kind: 'date' });
+                  pushAi('يرجى اختيار تاريخ صحيح:', { kind: 'date' });
                   result = 'Error: Invalid date';
                 } else {
-                  handleDateRef.current(d.toISOString(), d.toLocaleDateString('ar-IQ'), true);
-                  const cd = { kind: 'time' } as CardKind;
-                  pendingCardRef.current = { kind: cd.kind };
-                  setVoiceCard(cd);
-                  result = `Success: Date picked ${parameters.date}. Now ask the user to pick a time slot.`;
+                  pushAi(`🔄 تم تحديد التاريخ: ${d.toLocaleDateString('ar-IQ')}`);
+                  handleDate(d.toISOString(), d.toLocaleDateString('ar-IQ'));
+                  result = `Success: Date picked ${parameters.date}`;
                 }
               } else if (tool_name === 'pick_time') {
-                handleTimeRef.current(parameters.time, true);
-                const cd = { kind: 'patient' } as CardKind;
-                pendingCardRef.current = { kind: cd.kind };
-                setVoiceCard(cd);
-                result = `Success: Time picked ${parameters.time}. Now ask the user for their name and phone.`;
+                pushAi(`🔄 تم تحديد الوقت: ${parameters.time}`);
+                handleTime(parameters.time);
+                result = `Success: Time picked ${parameters.time}`;
               } else if (tool_name === 'fill_patient_info') {
                 setBooking(prev => ({
                   ...prev,
@@ -741,17 +543,14 @@ export const SmartDiagnosisPage: React.FC = () => {
                   }
                 }));
                 setStep('patient');
-                const cd = { kind: 'confirmation' } as CardKind;
-                pendingCardRef.current = { kind: cd.kind };
-                setVoiceCard(cd);
-                result = 'Success: Patient info updated. Ask the user to confirm the booking details shown on screen.';
+                result = 'Success: Patient info updated and UI moved to patient confirmation step.';
               } else if (tool_name === 'confirm_booking') {
                 const b = bookingRef.current;
                 if (!b.patient.name || !b.patient.phone) {
                   result = 'Error: Missing name or phone';
-                  pushAiRef.current('يرجى تزويدي باسمك الكامل ورقم هاتفك لإتمام الحجز.');
+                  pushAi('يرجى تزويدي باسمك الكامل ورقم هاتفك لإتمام الحجز.');
                 } else {
-                  await handleConfirmBookingRef.current();
+                  await handleConfirmBooking();
                   result = 'Success: Booking confirmed';
                 }
               } else {
@@ -879,36 +678,25 @@ export const SmartDiagnosisPage: React.FC = () => {
         return d;
       });
       return (
-        <div className="space-y-3">
-          {booking.clinic && (
-            <div className="bg-blue-50 border border-blue-100 p-2 rounded-xl flex items-center gap-2 mb-1 animate-in fade-in slide-in-from-top-2 duration-300">
-              <div className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center text-xs shadow-sm">🏥</div>
-              <div className="flex-1">
-                <p className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">العيادة المختارة</p>
-                <p className="text-sm font-bold text-gray-900 leading-tight">{booking.clinic.name}</p>
-              </div>
-            </div>
-          )}
-          <div className="-mx-2 mt-1 overflow-x-auto pb-2 scrollbar-thin">
-            <div className="flex gap-2 px-2">
-              {days.map(d => {
-                const dayName = d.toLocaleDateString('ar-IQ', { weekday: 'short' });
-                const dayNum = d.getDate();
-                const month = d.toLocaleDateString('ar-IQ', { month: 'short' });
-                const iso = d.toISOString();
-                return (
-                  <button
-                    key={iso}
-                    onClick={() => handleDate(iso, `${dayName} ${dayNum} ${month}`)}
-                    className="shrink-0 w-16 bg-white border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 rounded-xl py-2 px-1 transition-all text-center hover:scale-105"
-                  >
-                    <div className="text-[10px] text-gray-500">{dayName}</div>
-                    <div className="text-lg font-bold text-gray-900">{dayNum}</div>
-                    <div className="text-[10px] text-gray-500">{month}</div>
-                  </button>
-                );
-              })}
-            </div>
+        <div className="-mx-2 mt-3 overflow-x-auto pb-2">
+          <div className="flex gap-2 px-2">
+            {days.map(d => {
+              const dayName = d.toLocaleDateString('ar-IQ', { weekday: 'short' });
+              const dayNum = d.getDate();
+              const month = d.toLocaleDateString('ar-IQ', { month: 'short' });
+              const iso = d.toISOString();
+              return (
+                <button
+                  key={iso}
+                  onClick={() => handleDate(iso, `${dayName} ${dayNum} ${month}`)}
+                  className="shrink-0 w-16 bg-white border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 rounded-xl py-2 px-1 transition-all text-center hover:scale-105"
+                >
+                  <div className="text-[10px] text-gray-500">{dayName}</div>
+                  <div className="text-lg font-bold text-gray-900">{dayNum}</div>
+                  <div className="text-[10px] text-gray-500">{month}</div>
+                </button>
+              );
+            })}
           </div>
         </div>
       );
@@ -1050,56 +838,33 @@ export const SmartDiagnosisPage: React.FC = () => {
             className="flex-1 overflow-y-auto p-4 space-y-5 scroll-smooth"
             onScroll={handleScroll}
           >
-            {(() => {
-              let safeLastAiIndex = -1;
-              for (let i = messages.length - 1; i >= 0; i--) {
-                if (messages[i].role === 'ai') {
-                  safeLastAiIndex = i;
-                  break;
-                }
-              }
-
-              return messages.map((m, index) => (
-                <div key={m.id} className={`flex gap-2 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1 shadow-sm ${m.role === 'user' ? 'bg-gradient-to-br from-gray-600 to-gray-500 text-white' : 'bg-gradient-to-br from-blue-600 to-cyan-500 text-white'
-                    }`}>
-                    {m.role === 'user' ? <User className="w-4 h-4" /> : <Brain className="w-4 h-4" />}
-                  </div>
-                  <div className="max-w-[85%] flex-1">
-                    {m.image && (
-                      <img src={m.image} alt="" className="rounded-lg mb-1 max-w-[200px] border border-gray-200" />
-                    )}
-                    {m.content && (
-                      <div className={`p-3 rounded-2xl text-sm whitespace-pre-wrap leading-relaxed ${m.role === 'user'
+            {messages.map((m) => (
+              <div key={m.id} className={`flex gap-2 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1 shadow-sm ${m.role === 'user' ? 'bg-gradient-to-br from-gray-600 to-gray-500 text-white' : 'bg-gradient-to-br from-blue-600 to-cyan-500 text-white'
+                  }`}>
+                  {m.role === 'user' ? <User className="w-4 h-4" /> : <Brain className="w-4 h-4" />}
+                </div>
+                <div className="max-w-[85%] flex-1">
+                  {m.image && (
+                    <img src={m.image} alt="" className="rounded-lg mb-1 max-w-[200px] border border-gray-200" />
+                  )}
+                  {m.content && (
+                    <div className={`p-3 rounded-2xl text-sm whitespace-pre-wrap leading-relaxed ${m.role === 'user'
                         ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-tr-none'
                         : 'bg-gray-50 text-gray-800 border border-gray-100 rounded-tl-none'
-                        }`}>
-                        {m.content}
-                        {m.role === 'ai' && (
-                          <button onClick={() => speakText(m.content)} className="block mt-1.5 text-[10px] text-blue-600 hover:text-blue-800">
-                            <Volume2 className="w-3 h-3 inline ml-1" />استمع
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    {m.card ? renderCard(m.card) : (
-                      // In voice mode, if this is the last AI message and has no card, show the current voiceCard
-                      // ONLY if no other message in history has this specific card kind already
-                      voiceMode && m.role === 'ai' && index === safeLastAiIndex && voiceCard && 
-                      !messages.some(prev => prev.card?.kind === voiceCard.kind) && (
-                        <div className="mt-4 border-t border-blue-100 pt-4 animate-in fade-in slide-in-from-top-2 duration-500">
-                          <div className="flex items-center gap-2 mb-3">
-                            <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                            <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">تفاعل الآن</span>
-                          </div>
-                          {renderCard(voiceCard)}
-                        </div>
-                      )
-                    )}
-                  </div>
+                      }`}>
+                      {m.content}
+                      {m.role === 'ai' && (
+                        <button onClick={() => speakText(m.content)} className="block mt-1.5 text-[10px] text-blue-600 hover:text-blue-800">
+                          <Volume2 className="w-3 h-3 inline ml-1" />استمع
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {m.card && renderCard(m.card)}
                 </div>
-              ));
-            })()}
+              </div>
+            ))}
             {isLoading && (
               <div className="flex gap-2">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center text-white shadow-sm">
@@ -1185,7 +950,7 @@ export const SmartDiagnosisPage: React.FC = () => {
           <div className="border-t border-gray-100 p-4 bg-white relative z-50">
             {voiceMode && (
               <div className="flex justify-center mb-4 mt-[-25px] relative z-50">
-                <button
+                <button 
                   onClick={stopVoiceMode}
                   className="bg-gradient-to-br from-red-500 to-rose-600 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-[0_10px_30px_rgba(244,63,94,0.4)] hover:scale-110 active:scale-95 transition-all border-4 border-white group"
                 >
