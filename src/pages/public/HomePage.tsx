@@ -75,20 +75,12 @@ export const HomePage: React.FC = () => {
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-                  <Link to="/services" className="group w-full sm:w-auto">
+                  <Link to="/diagnosis/ai" className="group w-full sm:w-auto">
                     <button className="relative w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 md:px-8 md:py-4 text-base md:text-lg font-bold text-white bg-gradient-to-r from-blue-600 to-cyan-600 rounded-xl md:rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 group-hover:scale-105 group-hover:from-blue-700 group-hover:to-cyan-700">
                       <span className="absolute inset-0 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-xl md:rounded-2xl blur opacity-30 group-hover:opacity-50 transition-opacity"></span>
                       <span className="relative flex items-center">
                         ابدأ رحلتك العلاجية
                         <ArrowRight className="w-4 h-4 md:w-5 md:h-5 mr-2 group-hover:translate-x-1 transition-transform" />
-                      </span>
-                    </button>
-                  </Link>
-                  <Link to="/services#diagnosis" className="group w-full sm:w-auto">
-                    <button className="relative w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 md:px-8 md:py-4 text-base md:text-lg font-bold text-gray-700 bg-white/80 backdrop-blur-sm rounded-xl md:rounded-2xl border-2 border-gray-200/50 hover:border-blue-300 hover:bg-white hover:shadow-lg transition-all duration-300 group-hover:scale-105">
-                      <span className="relative flex items-center">
-                        تشخيص مجاني
-                        <Stethoscope className="w-4 h-4 md:w-5 md:h-5 mr-2 text-blue-600" />
                       </span>
                     </button>
                   </Link>

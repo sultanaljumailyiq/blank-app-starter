@@ -4,7 +4,7 @@ import { useConversation } from '@elevenlabs/react';
 import {
   Brain, MessageCircle, User, Image as ImageIcon, X, MapPin, Calendar as CalendarIcon,
   Mic, Volume2, Send, Phone, Check, ChevronLeft, Sparkles, Stethoscope, Baby, Scissors,
-  Smile, Activity, Crown, Clock, PhoneOff, Loader2
+  Smile, Activity, Crown, Clock, PhoneOff, Loader2, Heart, Bone, Pill
 } from 'lucide-react';
 import { Button } from '../../components/common/Button';
 import { aiService } from '../../services/ai/AIService';
@@ -15,12 +15,14 @@ import { supabase } from '../../lib/supabase';
 const ELEVENLABS_AGENT_ID = 'agent_9501kqetfd9jf9hrqaxnp79yffak';
 
 const SPECIALTIES = [
-  { id: 'general', label: 'كشف عام', icon: Stethoscope, color: 'from-blue-500 to-cyan-500', keys: ['عام', 'كشف', 'general'] },
+  { id: 'general', label: 'طب أسنان عام', icon: Stethoscope, color: 'from-blue-500 to-cyan-500', keys: ['عام', 'كشف', 'general', 'أسنان عام'] },
   { id: 'ortho', label: 'تقويم الأسنان', icon: Smile, color: 'from-purple-500 to-pink-500', keys: ['تقويم', 'orthodontic'] },
-  { id: 'kids', label: 'أسنان الأطفال', icon: Baby, color: 'from-orange-500 to-red-500', keys: ['أطفال', 'اطفال', 'pediatric'] },
-  { id: 'surgery', label: 'جراحة وخلع', icon: Scissors, color: 'from-rose-500 to-red-600', keys: ['جراحة', 'خلع', 'surgery'] },
-  { id: 'cosmetic', label: 'تجميل وتبييض', icon: Crown, color: 'from-amber-500 to-yellow-500', keys: ['تجميل', 'تبييض', 'cosmetic'] },
-  { id: 'emergency', label: 'طوارئ وألم', icon: Activity, color: 'from-red-600 to-rose-700', keys: ['طوارئ', 'ألم', 'الم'] },
+  { id: 'kids', label: 'طب أسنان أطفال', icon: Baby, color: 'from-orange-500 to-red-500', keys: ['أطفال', 'اطفال', 'pediatric', 'أسنان أطفال'] },
+  { id: 'root', label: 'علاج الجذور', icon: Heart, color: 'from-red-500 to-rose-500', keys: ['جذور', 'root canal', 'علاج الجذور'] },
+  { id: 'gum', label: 'لثة وأنسجة داعمة', icon: Activity, color: 'from-green-500 to-emerald-500', keys: ['لثة', 'أنسجة', 'periodontal', 'اللثة'] },
+  { id: 'implant', label: 'زراعة الأسنان', icon: Bone, color: 'from-gray-500 to-slate-500', keys: ['زراعة', 'implant'] },
+  { id: 'surgery', label: 'جراحة وجه وفكين', icon: Scissors, color: 'from-rose-500 to-red-600', keys: ['جراحة', 'فكين', 'surgery', 'وجه'] },
+  { id: 'cosmetic', label: 'تجميل الأسنان', icon: Crown, color: 'from-amber-500 to-yellow-500', keys: ['تجميل', 'تبييض', 'cosmetic', 'فينير'] },
 ];
 
 const GOVERNORATES = [
@@ -85,6 +87,7 @@ export const SmartDiagnosisPage: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const [isListening, setIsListening] = useState(false);
+  const initialMessageSent = useRef(false);
 
   // Refs to bookingState/clinics for ElevenLabs client tools (closures)
   const bookingRef = useRef(booking);
@@ -94,7 +97,8 @@ export const SmartDiagnosisPage: React.FC = () => {
 
   // Initial greeting + first card
   useEffect(() => {
-    if (messages.length === 0) {
+    if (messages.length === 0 && !initialMessageSent.current) {
+      initialMessageSent.current = true;
       pushAi('أهلاً بك! أنا مساعدك الذكي 🦷\n\nاختر ما الذي تحتاجه لنقترح لك أفضل عيادة:', { kind: 'specialty' });
       setStep('specialty');
     }
@@ -402,7 +406,7 @@ export const SmartDiagnosisPage: React.FC = () => {
     if (card.kind === 'clinics') {
       return (
         <div className="-mx-2 mt-3 overflow-x-auto pb-2 scrollbar-thin">
-          <div className="flex gap-3 px-2 snap-x snap-mandatory" style={{ minWidth: 'min-content' }}>
+          <div className="flex gap-3 px-2 snap-x snap-mandatory min-w-max">
             {card.clinics.map(c => (
               <div
                 key={c.id}
@@ -521,6 +525,7 @@ export const SmartDiagnosisPage: React.FC = () => {
               value={booking.patient.gender}
               onChange={e => setBooking(p => ({ ...p, patient: { ...p.patient, gender: e.target.value as any } }))}
               className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none bg-white"
+              aria-label="اختيار الجنس"
             >
               <option value="">الجنس</option>
               <option value="male">ذكر</option>
@@ -560,7 +565,7 @@ export const SmartDiagnosisPage: React.FC = () => {
       <div className="container mx-auto max-w-3xl px-3 py-4">
         {/* Header */}
         <div className="bg-white/80 backdrop-blur border border-white shadow-lg rounded-2xl p-4 mb-3 flex items-center gap-3">
-          <button onClick={() => navigate(-1)} className="p-2 rounded-full hover:bg-gray-100">
+          <button onClick={() => navigate(-1)} className="p-2 rounded-full hover:bg-gray-100" aria-label="العودة للخلف">
             <ChevronLeft className="w-5 h-5 text-gray-600" />
           </button>
           <div className="flex-1">
@@ -597,7 +602,7 @@ export const SmartDiagnosisPage: React.FC = () => {
         </div>
 
         {/* Chat Area */}
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 flex flex-col" style={{ height: 'calc(100vh - 180px)' }}>
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 flex flex-col h-[calc(100vh-180px)]">
           <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-4">
             {messages.map((m) => (
               <div key={m.id} className={`flex gap-2 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
@@ -635,8 +640,8 @@ export const SmartDiagnosisPage: React.FC = () => {
                 </div>
                 <div className="bg-gray-50 border border-gray-100 rounded-2xl rounded-tl-none p-3 flex gap-1 items-center">
                   <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" />
-                  <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce [animation-delay:150ms]" />
+                  <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce [animation-delay:300ms]" />
                 </div>
               </div>
             )}
@@ -649,17 +654,17 @@ export const SmartDiagnosisPage: React.FC = () => {
               {imagePreview && (
                 <div className="flex items-center gap-2 mb-2 p-2 bg-blue-50 rounded-lg w-fit border border-blue-100">
                   <img src={imagePreview} alt="" className="w-10 h-10 object-cover rounded" />
-                  <button onClick={() => setImagePreview(null)} className="text-red-500 p-1 hover:bg-red-50 rounded-full">
+                  <button onClick={() => setImagePreview(null)} className="text-red-500 p-1 hover:bg-red-50 rounded-full" aria-label="إغلاق معاينة الصورة">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
               )}
               <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-2xl p-1.5 focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-50 transition-all">
-                <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" />
-                <button onClick={() => fileInputRef.current?.click()} className="p-2 hover:bg-white rounded-xl text-gray-500 hover:text-blue-600 transition-colors">
+                <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" aria-label="رفع صورة" />
+                <button onClick={() => fileInputRef.current?.click()} className="p-2 hover:bg-white rounded-xl text-gray-500 hover:text-blue-600 transition-colors" aria-label="إرفاق صورة">
                   <ImageIcon className="w-5 h-5" />
                 </button>
-                <button onClick={toggleListening} className={`p-2 rounded-xl transition-colors ${isListening ? 'bg-red-100 text-red-600 animate-pulse' : 'hover:bg-white text-gray-500 hover:text-blue-600'}`}>
+                <button onClick={toggleListening} className={`p-2 rounded-xl transition-colors ${isListening ? 'bg-red-100 text-red-600 animate-pulse' : 'hover:bg-white text-gray-500 hover:text-blue-600'}`} aria-label={isListening ? 'إيقاف التسجيل' : 'بدء التسجيل الصوتي'}>
                   <Mic className="w-5 h-5" />
                 </button>
                 <input
@@ -674,6 +679,7 @@ export const SmartDiagnosisPage: React.FC = () => {
                   onClick={handleSendMessage}
                   disabled={(!input.trim() && !imagePreview) || isLoading}
                   className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white p-2 rounded-xl disabled:opacity-40 transition-all"
+                  aria-label="إرسال الرسالة"
                 >
                   <Send className="w-5 h-5" />
                 </button>

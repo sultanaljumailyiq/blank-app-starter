@@ -11,6 +11,9 @@ import { ServicesPage } from './pages/public/ServicesPage';
 import { ArticleDetailPage } from './pages/public/ArticleDetailPage';
 import { DiagnosisDetailPage } from './pages/public/DiagnosisDetailPage';
 import { SmartDiagnosisPage } from './pages/public/SmartDiagnosisPage';
+import { ConversationProvider } from '@elevenlabs/react';
+
+const ELEVENLABS_AGENT_ID = 'agent_9501kqetfd9jf9hrqaxnp79yffak';
 
 // Emergency Pages
 import { DentalEmergencyPage } from './pages/emergency/DentalEmergencyPage';
@@ -135,7 +138,7 @@ function AppContent() {
           <Route path="/" element={<HomePage />} />
           <Route path="/services" element={<ServicesPage />} />
           <Route path="/article/:id" element={<ArticleDetailPage />} />
-          <Route path="/diagnosis/ai" element={<SmartDiagnosisPage />} />
+          <Route path="/diagnosis/ai" element={<ConversationProvider agentId={ELEVENLABS_AGENT_ID}><SmartDiagnosisPage /></ConversationProvider>} />
           <Route path="/smart" element={<DiagnosisDetailPage />} />
           <Route path="/diagnosis/:id" element={<DiagnosisDetailPage />} />
           <Route path="/booking" element={<BookingPage />} />
