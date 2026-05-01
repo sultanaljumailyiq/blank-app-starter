@@ -473,50 +473,51 @@ export const SmartDiagnosisPage: React.FC = () => {
             const toolCall = msg.client_tool_call;
             if (!toolCall) return;
             const { tool_name, tool_call_id, parameters } = toolCall;
+            console.log(`[ElevenLabs Tool] Calling ${tool_name}`, parameters);
             let result = '';
 
             try {
               if (tool_name === 'select_specialty') {
-                const inputSpec = parameters.specialty?.toLowerCase() || '';
+                const inputSpec = (parameters.specialty_id || parameters.specialty || parameters.name || '').toLowerCase();
                 const sp = SPECIALTIES.find(s =>
+                  s.id === inputSpec ||
                   s.keys.some(k => inputSpec.includes(k.toLowerCase()) || k.toLowerCase().includes(inputSpec)) ||
                   s.label.includes(inputSpec) ||
-                  inputSpec.includes(s.label) ||
-                  (inputSpec.includes('ألم') && s.id === 'general') ||
-                  (inputSpec.includes('وجع') && s.id === 'general')
+                  inputSpec.includes(s.label)
                 );
                 if (sp) {
                   handleSpecialty(sp, true);
-                  result = `Success: Selected specialty ${sp.label}. UI is now showing governorate selection card.`;
+                  result = `Success: Selected specialty ${sp.label}. UI step updated to governorate.`;
                 } else {
                   pushAi(`لم أستطع مطابقة "${inputSpec}" مع الاختصاصات المتاحة. يرجى الاختيار من القائمة:`, { kind: 'specialty' });
                   result = 'Error: Specialty not matched';
                 }
               } else if (tool_name === 'select_governorate') {
-                const inputGov = parameters.governorate?.trim() || '';
+                const inputGov = (parameters.governorate_name || parameters.governorate || parameters.name || '').trim();
                 const g = GOVERNORATES.find(x => inputGov.includes(x) || x.includes(inputGov));
                 if (g) {
                   handleGovernorate(g, true);
-                  result = `Success: Selected governorate ${g}. UI is now showing clinics list.`;
+                  result = `Success: Selected governorate ${g}. UI step updated to clinics.`;
                 } else {
                   pushAi(`المحافظة "${inputGov}" غير متوفرة حالياً، يرجى الاختيار من القائمة:`, { kind: 'governorate' });
                   result = 'Error: Governorate not matched';
                 }
               } else if (tool_name === 'show_clinics') {
+                setStep('clinics');
                 pushAi('🔄 جاري عرض العيادات المتاحة في منطقتك...', { kind: 'clinics', clinics: clinicsRef.current });
-                result = `Success: ${clinicsRef.current.length} clinics shown`;
+                result = `Success: ${clinicsRef.current.length} clinics shown in UI.`;
               } else if (tool_name === 'select_clinic') {
-                const inputClinic = parameters.clinic_name?.toLowerCase() || '';
+                const inputClinic = (parameters.clinic_name || parameters.clinic_id || parameters.name || '').toLowerCase();
                 const c = clinicsRef.current.find(cl =>
                   cl.name.toLowerCase().includes(inputClinic) ||
-                  inputClinic.includes(cl.name.toLowerCase())
+                  inputClinic.includes(cl.name.toLowerCase()) ||
+                  cl.id === inputClinic
                 );
                 if (c) {
-                  pushAi(`🔄 تم اختيار عيادة: ${c.name}`);
                   handleClinic(c);
-                  result = `Success: Selected clinic ${c.name}`;
+                  result = `Success: Selected clinic ${c.name}. UI step updated to date selection.`;
                 } else {
-                  pushAi(`لم أجد عيادة باسم "${inputClinic}".`);
+                  pushAi(`لم أجد عيادة باسم "${inputClinic}". يرجى الاختيار من القائمة:`, { kind: 'clinics', clinics: clinicsRef.current });
                   result = 'Error: Clinic not found';
                 }
               } else if (tool_name === 'pick_date') {
@@ -537,13 +538,14 @@ export const SmartDiagnosisPage: React.FC = () => {
                 setBooking(prev => ({
                   ...prev,
                   patient: {
-                    name: parameters.name || prev.patient.name,
-                    phone: parameters.phone || prev.patient.phone,
+                    name: parameters.name || parameters.patient_name || prev.patient.name,
+                    phone: parameters.phone || parameters.phone_number || prev.patient.phone,
                     age: parameters.age || prev.patient.age,
                     gender: (parameters.gender as any) || prev.patient.gender,
                   }
                 }));
-                result = 'Success: Patient info updated';
+                setStep('patient');
+                result = 'Success: Patient info updated and UI moved to patient confirmation step.';
               } else if (tool_name === 'confirm_booking') {
                 const b = bookingRef.current;
                 if (!b.patient.name || !b.patient.phone) {
@@ -561,9 +563,11 @@ export const SmartDiagnosisPage: React.FC = () => {
             }
 
             ws.send(JSON.stringify({
-              type: 'client_tool_result',
-              tool_call_id,
-              result: String(result)
+              type: 'client_tool_call_result',
+              client_tool_call_result: {
+                call_id: tool_call_id,
+                result: String(result)
+              }
             }));
           }
         } catch (err) { console.warn('[ElevenLabs WS] parse error:', err); }
