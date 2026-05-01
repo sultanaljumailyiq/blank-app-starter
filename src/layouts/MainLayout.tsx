@@ -5,7 +5,8 @@ import { Outlet, useLocation } from 'react-router-dom';
 
 export const MainLayout: React.FC = () => {
     const location = useLocation();
-    const shouldHideHeader = location.pathname.includes('/community');
+    const shouldHideHeader = location.pathname.includes('/community') || location.pathname.includes('/diagnosis/ai');
+
 
     return (
         <div className="min-h-screen bg-white pb-24">

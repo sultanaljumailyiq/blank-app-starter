@@ -15,14 +15,14 @@ import { supabase } from '../../lib/supabase';
 const ELEVENLABS_AGENT_ID = 'agent_9501kqetfd9jf9hrqaxnp79yffak';
 
 const SPECIALTIES = [
-  { id: 'general', label: 'طب أسنان عام', icon: Stethoscope, color: 'from-blue-500 to-cyan-500', keys: ['عام', 'كشف', 'general', 'أسنان عام'] },
-  { id: 'ortho', label: 'تقويم الأسنان', icon: Smile, color: 'from-purple-500 to-pink-500', keys: ['تقويم', 'orthodontic'] },
-  { id: 'kids', label: 'طب أسنان أطفال', icon: Baby, color: 'from-orange-500 to-red-500', keys: ['أطفال', 'اطفال', 'pediatric', 'أسنان أطفال'] },
-  { id: 'root', label: 'علاج الجذور', icon: Heart, color: 'from-red-500 to-rose-500', keys: ['جذور', 'root canal', 'علاج الجذور'] },
-  { id: 'gum', label: 'لثة وأنسجة داعمة', icon: Activity, color: 'from-green-500 to-emerald-500', keys: ['لثة', 'أنسجة', 'periodontal', 'اللثة'] },
-  { id: 'implant', label: 'زراعة الأسنان', icon: Bone, color: 'from-gray-500 to-slate-500', keys: ['زراعة', 'implant'] },
-  { id: 'surgery', label: 'جراحة وجه وفكين', icon: Scissors, color: 'from-rose-500 to-red-600', keys: ['جراحة', 'فكين', 'surgery', 'وجه'] },
-  { id: 'cosmetic', label: 'تجميل الأسنان', icon: Crown, color: 'from-amber-500 to-yellow-500', keys: ['تجميل', 'تبييض', 'cosmetic', 'فينير'] },
+  { id: 'general', label: 'طب أسنان عام', icon: Stethoscope, color: 'from-blue-600 to-blue-400', keys: ['عام', 'كشف', 'general', 'أسنان عام'] },
+  { id: 'ortho', label: 'تقويم الأسنان', icon: Smile, color: 'from-blue-500 to-cyan-500', keys: ['تقويم', 'orthodontic'] },
+  { id: 'kids', label: 'طب أسنان أطفال', icon: Baby, color: 'from-cyan-500 to-teal-400', keys: ['أطفال', 'اطفال', 'pediatric', 'أسنان أطفال'] },
+  { id: 'root', label: 'علاج الجذور', icon: Heart, color: 'from-indigo-500 to-blue-500', keys: ['جذور', 'root canal', 'علاج الجذور'] },
+  { id: 'gum', label: 'لثة وأنسجة داعمة', icon: Activity, color: 'from-blue-500 to-sky-400', keys: ['لثة', 'أنسجة', 'periodontal', 'اللثة'] },
+  { id: 'implant', label: 'زراعة الأسنان', icon: Bone, color: 'from-slate-600 to-blue-500', keys: ['زراعة', 'implant'] },
+  { id: 'surgery', label: 'جراحة وجه وفكين', icon: Scissors, color: 'from-sky-600 to-blue-600', keys: ['جراحة', 'فكين', 'surgery', 'وجه'] },
+  { id: 'cosmetic', label: 'تجميل الأسنان', icon: Crown, color: 'from-teal-600 to-cyan-500', keys: ['تجميل', 'تبييض', 'cosmetic', 'فينير'] },
 ];
 
 const GOVERNORATES = [
@@ -99,7 +99,7 @@ export const SmartDiagnosisPage: React.FC = () => {
   useEffect(() => {
     if (messages.length === 0 && !initialMessageSent.current) {
       initialMessageSent.current = true;
-      pushAi('أهلاً بك! أنا مساعدك الذكي 🦷\n\nاختر ما الذي تحتاجه لنقترح لك أفضل عيادة:', { kind: 'specialty' });
+      pushAi('أنا المساعد الصوتي لمنصة طب الأسنان ، أساعدك في إيجاد أفضل عيادة لحالتك.', { kind: 'specialty' });
       setStep('specialty');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -325,9 +325,16 @@ export const SmartDiagnosisPage: React.FC = () => {
             gender: (params.gender as any) || prev.patient.gender,
           }
         }));
-        return 'patient info updated';
+        return 'patient info updated. check if name and phone are filled, if not, ask for them.';
       },
-      confirm_booking: async () => { await handleConfirmBooking(); return 'booking confirmed'; },
+      confirm_booking: async () => { 
+        const b = bookingRef.current;
+        if (!b.patient.name || !b.patient.phone) {
+          return 'Error: Missing patient name or phone. Please ask the user for their full name and phone number to complete the booking.';
+        }
+        await handleConfirmBooking(); 
+        return 'booking confirmed successfully. tell the user the appointment is confirmed and the clinic will contact them.'; 
+      },
     },
     overrides: {
       agent: {
@@ -351,8 +358,7 @@ export const SmartDiagnosisPage: React.FC = () => {
   const startVoiceMode = async () => {
     setIsConnectingVoice(true);
     try {
-      await navigator.mediaDevices.getUserMedia({ audio: true });
-      await conversation.startSession({ agentId: ELEVENLABS_AGENT_ID, connectionType: 'webrtc' });
+      await conversation.startSession({ agentId: ELEVENLABS_AGENT_ID });
       setVoiceMode(true);
     } catch (e) {
       console.error(e);
@@ -371,17 +377,19 @@ export const SmartDiagnosisPage: React.FC = () => {
   const renderCard = (card: CardKind) => {
     if (card.kind === 'specialty') {
       return (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 mt-2">
           {SPECIALTIES.map(sp => {
             const Icon = sp.icon;
             return (
               <button
                 key={sp.id}
                 onClick={() => handleSpecialty(sp)}
-                className={`group relative overflow-hidden bg-gradient-to-br ${sp.color} text-white p-3 rounded-2xl shadow-md hover:shadow-xl hover:scale-105 transition-all duration-200 text-right`}
+                className={`group relative overflow-hidden bg-gradient-to-br ${sp.color} text-white p-2 rounded-xl shadow-sm hover:shadow-md hover:scale-[1.02] transition-all duration-200 flex items-center gap-2 text-right border border-white/20`}
               >
-                <Icon className="w-6 h-6 mb-1.5 opacity-90" />
-                <div className="text-xs font-bold leading-tight">{sp.label}</div>
+                <div className="bg-white/20 p-1.5 rounded-lg shrink-0">
+                  <Icon className="w-4 h-4 opacity-100" />
+                </div>
+                <div className="text-[11px] font-bold leading-tight flex-1">{sp.label}</div>
               </button>
             );
           })}
@@ -559,42 +567,43 @@ export const SmartDiagnosisPage: React.FC = () => {
     return null;
   };
 
+  // handle scroll to hide/show large button and show floating button
+  const [showFloatingVoice, setShowFloatingVoice] = useState(false);
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (e.currentTarget.scrollTop > 150) {
+      setShowFloatingVoice(true);
+    } else {
+      setShowFloatingVoice(false);
+    }
+  };
+
   // ============== UI ==============
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      <div className="container mx-auto max-w-3xl px-3 py-4">
+    <div className="fixed inset-0 bg-gradient-to-br from-blue-50 via-white to-purple-50 flex flex-col sm:p-4 z-50">
+      <div className="flex-1 w-full max-w-3xl mx-auto flex flex-col bg-white sm:rounded-3xl shadow-2xl overflow-hidden relative h-full">
         {/* Header */}
-        <div className="bg-white/80 backdrop-blur border border-white shadow-lg rounded-2xl p-4 mb-3 flex items-center gap-3">
-          <button onClick={() => navigate(-1)} className="p-2 rounded-full hover:bg-gray-100" aria-label="العودة للخلف">
-            <ChevronLeft className="w-5 h-5 text-gray-600" />
+        <div className="bg-white/90 backdrop-blur-md border-b border-gray-100 p-3 sm:p-4 flex items-center gap-3 shrink-0 z-10">
+          <button onClick={() => navigate(-1)} className="p-2 rounded-full hover:bg-gray-100 transition-colors" aria-label="العودة للخلف">
+            <ChevronLeft className="w-6 h-6 text-gray-600" />
           </button>
           <div className="flex-1">
             <div className="flex items-center gap-2">
-              <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-md">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-md shrink-0">
                 <Sparkles className="w-5 h-5 text-white" />
               </div>
               <div>
                 <div className="font-bold text-gray-900">المساعد الذكي</div>
-                <div className="text-[10px] text-gray-500 flex items-center gap-1">
-                  <span className={`w-1.5 h-1.5 rounded-full ${voiceMode ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`} />
-                  {voiceMode ? (conversation.isSpeaking ? 'يتحدث…' : 'يستمع…') : 'متصل'}
+                <div className="text-xs text-gray-500 flex items-center gap-1.5">
+                  <span className={`w-2 h-2 rounded-full ${voiceMode ? 'bg-red-500 animate-pulse' : 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]'}`} />
+                  {voiceMode ? (conversation.isSpeaking ? 'يتحدث…' : 'يستمع…') : 'متصل وجاهز'}
                 </div>
               </div>
             </div>
           </div>
-          {!voiceMode ? (
-            <button
-              onClick={startVoiceMode}
-              disabled={isConnectingVoice}
-              className="bg-gradient-to-r from-rose-500 to-pink-600 text-white px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md hover:shadow-lg hover:scale-105 transition-all disabled:opacity-60"
-            >
-              {isConnectingVoice ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mic className="w-4 h-4" />}
-              تحدث صوتياً
-            </button>
-          ) : (
+          {voiceMode && (
             <button
               onClick={stopVoiceMode}
-              className="bg-red-600 text-white px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md animate-pulse"
+              className="bg-red-50 hover:bg-red-100 text-red-600 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors border border-red-100"
             >
               <PhoneOff className="w-4 h-4" />إنهاء
             </button>
@@ -602,12 +611,15 @@ export const SmartDiagnosisPage: React.FC = () => {
         </div>
 
         {/* Chat Area */}
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 flex flex-col h-[calc(100vh-180px)]">
-          <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-4">
+        <div className="flex-1 flex flex-col relative overflow-hidden bg-gray-50/30">
+          <div 
+            className="flex-1 overflow-y-auto p-4 space-y-5 scroll-smooth"
+            onScroll={handleScroll}
+          >
             {messages.map((m) => (
               <div key={m.id} className={`flex gap-2 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1 shadow-sm ${
-                  m.role === 'user' ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white' : 'bg-gradient-to-br from-purple-500 to-pink-500 text-white'
+                  m.role === 'user' ? 'bg-gradient-to-br from-gray-600 to-gray-500 text-white' : 'bg-gradient-to-br from-blue-600 to-cyan-500 text-white'
                 }`}>
                   {m.role === 'user' ? <User className="w-4 h-4" /> : <Brain className="w-4 h-4" />}
                 </div>
@@ -635,18 +647,57 @@ export const SmartDiagnosisPage: React.FC = () => {
             ))}
             {isLoading && (
               <div className="flex gap-2">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white shadow-sm">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center text-white shadow-sm">
                   <Brain className="w-4 h-4 animate-pulse" />
                 </div>
                 <div className="bg-gray-50 border border-gray-100 rounded-2xl rounded-tl-none p-3 flex gap-1 items-center">
-                  <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" />
-                  <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce [animation-delay:150ms]" />
-                  <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce [animation-delay:300ms]" />
+                  <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" />
+                  <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce [animation-delay:150ms]" />
+                  <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce [animation-delay:300ms]" />
                 </div>
               </div>
             )}
-            <div ref={messagesEndRef} />
+            
+            {/* Large Talk Button (only shown when not floated and not in voice mode) */}
+            {!voiceMode && !showFloatingVoice && (
+              <div className="mt-8 mb-4 flex justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <button
+                  onClick={startVoiceMode}
+                  disabled={isConnectingVoice}
+                  className="group relative overflow-hidden bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600 text-white px-8 py-4 rounded-3xl font-bold flex items-center gap-3 shadow-xl hover:shadow-2xl hover:scale-[1.02] transition-all disabled:opacity-70 disabled:hover:scale-100 w-full max-w-sm justify-center border border-blue-400/30"
+                >
+                  <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                  {isConnectingVoice ? (
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                  ) : (
+                    <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-md group-hover:scale-110 transition-transform shrink-0 shadow-inner">
+                      <Mic className="w-6 h-6" />
+                    </div>
+                  )}
+                  <div className="text-right">
+                    <div className="text-lg">تحدث مع المساعد</div>
+                    <div className="text-xs text-blue-100 font-normal mt-0.5">أسرع طريقة لإتمام حجزك</div>
+                  </div>
+                </button>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} className="h-4" />
           </div>
+
+          {/* Floating Talk Button (shows when scrolled down) */}
+          {!voiceMode && (
+            <div className={`absolute left-4 bottom-20 transition-all duration-300 z-20 ${showFloatingVoice ? 'scale-100 opacity-100 translate-y-0' : 'scale-50 opacity-0 translate-y-10 pointer-events-none'}`}>
+              <button
+                onClick={startVoiceMode}
+                disabled={isConnectingVoice}
+                className="bg-gradient-to-r from-blue-600 to-blue-500 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-2xl hover:scale-110 transition-all disabled:opacity-70 border border-blue-400/50"
+                aria-label="تحدث صوتياً"
+              >
+                {isConnectingVoice ? <Loader2 className="w-6 h-6 animate-spin" /> : <Mic className="w-6 h-6" />}
+              </button>
+            </div>
+          )}
 
           {/* Input */}
           {!voiceMode && (
@@ -688,15 +739,15 @@ export const SmartDiagnosisPage: React.FC = () => {
           )}
 
           {voiceMode && (
-            <div className="border-t border-gray-100 p-4 bg-gradient-to-r from-rose-50 to-pink-50 text-center">
+            <div className="border-t border-gray-100 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 text-center">
               <div className="flex items-center justify-center gap-2">
                 <div className="relative">
-                  <div className={`w-12 h-12 rounded-full bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center text-white shadow-lg ${conversation.isSpeaking ? 'animate-pulse' : ''}`}>
+                  <div className={`w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-blue-500 flex items-center justify-center text-white shadow-lg ${conversation.isSpeaking ? 'animate-pulse' : ''}`}>
                     <Mic className="w-6 h-6" />
                   </div>
-                  <div className="absolute inset-0 rounded-full border-4 border-rose-300 animate-ping" />
+                  <div className="absolute inset-0 rounded-full border-4 border-blue-300 animate-ping" />
                 </div>
-                <div className="text-xs font-bold text-rose-700">
+                <div className="text-xs font-bold text-blue-800">
                   {conversation.isSpeaking ? 'المساعد يتحدث…' : 'تكلم الآن، أنا أستمع…'}
                 </div>
               </div>
