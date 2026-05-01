@@ -141,6 +141,22 @@ export const SmartDiagnosisPage: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
+  // Fallback sync: Sync voiceCard with step to ensure we always have a current card
+  useEffect(() => {
+    if (voiceMode) {
+      if (step === 'specialty' && (!voiceCard || voiceCard.kind !== 'specialty')) setVoiceCard({ kind: 'specialty' });
+      else if (step === 'governorate' && (!voiceCard || voiceCard.kind !== 'governorate')) setVoiceCard({ kind: 'governorate' });
+      else if (step === 'clinics' && (!voiceCard || voiceCard.kind !== 'clinics')) setVoiceCard({ kind: 'clinics', clinics: filteredClinics });
+      else if (step === 'date' && (!voiceCard || voiceCard.kind !== 'date')) setVoiceCard({ kind: 'date' });
+      else if (step === 'time' && (!voiceCard || voiceCard.kind !== 'time')) setVoiceCard({ kind: 'time' });
+      else if (step === 'patient' && (!voiceCard || voiceCard.kind !== 'patient')) setVoiceCard({ kind: 'patient' });
+    }
+  }, [voiceMode, step, filteredClinics, voiceCard]);
+
+  const cleanPromptTags = (text: string) => {
+    return text.replace(/\[.*?\]/g, '').trim();
+  };
+
   const pushAi = (content: string, card?: CardKind) => {
     const addMsg = (c: string, cd?: CardKind): string => {
       const id = crypto.randomUUID();
@@ -150,14 +166,13 @@ export const SmartDiagnosisPage: React.FC = () => {
 
     if (voiceModeRef.current) {
       // Always trigger speech for AI messages in voice mode
-      setLastVoiceMsg(content.replace('🎙️ ', ''));
+      const cleanText = cleanPromptTags(content.replace('🎙️ ', ''));
+      setLastVoiceMsg(cleanText);
       
       if (card) {
         // Queue the card metadata to be attached to the next incoming WS message
         pendingCardRef.current = { kind: card.kind, clinics: (card as any).clinics };
-        setVoiceCard(card);
       }
-      // Do NOT return here, so the message is also added to the chat history
     }
 
     addMsg(content, card);
@@ -213,7 +228,6 @@ export const SmartDiagnosisPage: React.FC = () => {
         if (isVoice) {
           const cd = { kind: 'clinics', clinics: list } as CardKind;
           pendingCardRef.current = { kind: cd.kind, clinics: list };
-          setVoiceCard(cd);
         } else {
           pushAi(statusMsg, { kind: 'clinics', clinics: list });
         }
@@ -222,7 +236,6 @@ export const SmartDiagnosisPage: React.FC = () => {
         if (isVoice) {
           const cd = { kind: 'governorate' } as CardKind;
           pendingCardRef.current = { kind: cd.kind };
-          setVoiceCard(cd);
         } else {
           pushAi(errorMsg, { kind: 'governorate' });
         }
@@ -491,32 +504,33 @@ export const SmartDiagnosisPage: React.FC = () => {
         setVoiceMode(true);
         voiceModeRef.current = true;
         setIsConnectingVoice(false);
-        pushAiRef.current('🎙️ المساعد الصوتي متصل، تكلم الآن…');
+        pushAiRef.current('المساعد الصوتي متصل، تكلم الآن…');
 
         // إرسال إعدادات الجلسة — نطلب PCM_22050 كمخرج صوتي
         ws.send(JSON.stringify({
           type: 'conversation_initiation_client_data',
           conversation_config_override: {
             agent: {
-              first_message: 'أهلاً بك في منصة طب الأسنان! أنا مساعدك الذكي. ما الذي تحتاجه؟',
+              first_message: 'أهلاً بك في منصة طب الأسنان! أنا مساعدك الذكي. بشنو أقدر أساعدك اليوم؟',
               language: 'ar',
               prompt: {
-                prompt: `أنت "المساعد الذكي لمنصة طب الأسنان في مجال طب الأسنان الرقمي.
-شخصيتك: هادئ، دافئ، دقيق، وتبعث على الطمأنينة. تتحدث بلغة عربية مفهومة (بيضاء) قريبة للقلب.
+                prompt: `أنت "المساعد الذكي لمنصة طب الأسنان"، خبير في حجز مواعيد العيادات.
+تحدث بلهجة عراقية مهذبة واحترافية (لهجة بيضاء).
 
-مسار العمل والأدوات (Workflow):
-1) الترحيب والفرز: ابدأ بترحيب دافئ واسأل عن المشكلة. عند تحديد نوع الحالة، استخدم أداة [select_specialty].
-2) تحديد الموقع: اسأل بوضوح "في أي محافظة أنت؟". استخدم أداة [select_governorate] فور ذكر المحافظة أو المدينة (مثلاً تكريت -> صلاح الدين). **قاعدة صارمة**: لا تخمن الموقع أبداً؛ إذا لم يذكره المستخدم، اسأله عنه.
-3) عرض العيادات: بعد تحديد الموقع، استخدم [show_clinics]. 
-   **هام جداً**: عندما تظهر النتائج، قم بنطق أسماء العيادات بصوتك (مثلاً: "وجدت لك عيادة النور ومركز الابتسامة.. أيهما تفضل؟").
-4) اختيار العيادة: عند تحديد الاسم، استخدم [select_clinic].
-5) الجدولة: استخدم [pick_date] لاختيار اليوم، ثم [pick_time] لاختيار الساعة.
-6) التأكيد: استخدم [fill_patient_info] لجمع بيانات المريض، ثم [confirm_booking] لإتمام الحجز نهائياً.
+قواعد العمل:
+1. لا تكرر كلامك. إذا قمت باستدعاء أداة، انتظر النتيجة ثم تحدث مرة واحدة فقط.
+2. لا تقل "لحظات" أو "أبحث لك" إلا إذا كان البحث سيستغرق وقتاً طويلاً. يفضل الانتقال مباشرة للنتائج.
+3. عند اختيار التخصص (select_specialty)، سيظهر للمستخدم قائمة المحافظات تلقائياً. اسأله مباشرة "في أي محافظة أنت؟".
+4. عند اختيار المحافظة (select_governorate)، سيظهر للمستخدم قائمة العيادات. قل له "إليك العيادات المتوفرة، أي واحدة تفضل؟".
+5. كن مختصراً، ودوداً، ومباشراً.
 
-قيود هامة:
-- ردودك يجب أن تكون قصيرة ومركزة (جملتان كحد أقصى) لتناسب التفاعل الصوتي.
-- لا تقدم وصفات دوائية؛ أنت مساعد إداري وتنظيمي بارع.
-- استخدم عبارات مثل: "بكل سرور"، "اختيار موفق"، "سلامتك تهمنا".`
+الخطوات:
+1. ابدأ بالترحيب واسأل عن التخصص المطلوب.
+2. بعد تحديد التخصص، اسأل عن المحافظة.
+3. بعد المحافظة، اعرض العيادات واسأله يختار واحدة.
+4. اتبع تدفق الحجز (تاريخ، وقت، معلومات المريض) حتى التأكيد النهائي.
+
+إذا واجهت أي مشكلة، اعتذر بلباقة واطلب من المستخدم المحاولة مرة أخرى أو اختيار خيار من الظاهر على الشاشة.`
               }
             }
           }
@@ -575,14 +589,15 @@ export const SmartDiagnosisPage: React.FC = () => {
               if (pending) {
                 cardData = { kind: pending.kind, clinics: pending.clinics } as CardKind;
                 pendingCardRef.current = null; // Clear ONLY when consumed
-                setVoiceCard(cardData); // Sync global card
               }
               
-              setMessages(prev => [...prev, { id, role: 'ai', content: `🎙️ ${text}`, card: cardData }]);
+              const cleanText = cleanPromptTags(text);
+              setMessages(prev => [...prev, { id, role: 'ai', content: `🎙️ ${cleanText}`, card: cardData }]);
+              if (voiceModeRef.current) setLastVoiceMsg(cleanText);
             }
           } else if (msg.type === 'user_transcript') {
             const text = msg.user_transcription_event?.user_transcript || '';
-            if (text) pushUserRef.current(`🎙️ ${text}`);
+            if (text) pushUserRef.current(text);
           } else if (msg.type === 'interruption') {
             audioQueueRef.current = [];
             isPlayingRef.current = false;
@@ -1035,33 +1050,56 @@ export const SmartDiagnosisPage: React.FC = () => {
             className="flex-1 overflow-y-auto p-4 space-y-5 scroll-smooth"
             onScroll={handleScroll}
           >
-            {messages.map((m) => (
-              <div key={m.id} className={`flex gap-2 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1 shadow-sm ${m.role === 'user' ? 'bg-gradient-to-br from-gray-600 to-gray-500 text-white' : 'bg-gradient-to-br from-blue-600 to-cyan-500 text-white'
-                  }`}>
-                  {m.role === 'user' ? <User className="w-4 h-4" /> : <Brain className="w-4 h-4" />}
+            {(() => {
+              let safeLastAiIndex = -1;
+              for (let i = messages.length - 1; i >= 0; i--) {
+                if (messages[i].role === 'ai') {
+                  safeLastAiIndex = i;
+                  break;
+                }
+              }
+
+              return messages.map((m, index) => (
+                <div key={m.id} className={`flex gap-2 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1 shadow-sm ${m.role === 'user' ? 'bg-gradient-to-br from-gray-600 to-gray-500 text-white' : 'bg-gradient-to-br from-blue-600 to-cyan-500 text-white'
+                    }`}>
+                    {m.role === 'user' ? <User className="w-4 h-4" /> : <Brain className="w-4 h-4" />}
+                  </div>
+                  <div className="max-w-[85%] flex-1">
+                    {m.image && (
+                      <img src={m.image} alt="" className="rounded-lg mb-1 max-w-[200px] border border-gray-200" />
+                    )}
+                    {m.content && (
+                      <div className={`p-3 rounded-2xl text-sm whitespace-pre-wrap leading-relaxed ${m.role === 'user'
+                        ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-tr-none'
+                        : 'bg-gray-50 text-gray-800 border border-gray-100 rounded-tl-none'
+                        }`}>
+                        {m.content}
+                        {m.role === 'ai' && (
+                          <button onClick={() => speakText(m.content)} className="block mt-1.5 text-[10px] text-blue-600 hover:text-blue-800">
+                            <Volume2 className="w-3 h-3 inline ml-1" />استمع
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {m.card ? renderCard(m.card) : (
+                      // In voice mode, if this is the last AI message and has no card, show the current voiceCard
+                      // ONLY if no other message in history has this specific card kind already
+                      voiceMode && m.role === 'ai' && index === safeLastAiIndex && voiceCard && 
+                      !messages.some(prev => prev.card?.kind === voiceCard.kind) && (
+                        <div className="mt-4 border-t border-blue-100 pt-4 animate-in fade-in slide-in-from-top-2 duration-500">
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                            <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">تفاعل الآن</span>
+                          </div>
+                          {renderCard(voiceCard)}
+                        </div>
+                      )
+                    )}
+                  </div>
                 </div>
-                <div className="max-w-[85%] flex-1">
-                  {m.image && (
-                    <img src={m.image} alt="" className="rounded-lg mb-1 max-w-[200px] border border-gray-200" />
-                  )}
-                  {m.content && (
-                    <div className={`p-3 rounded-2xl text-sm whitespace-pre-wrap leading-relaxed ${m.role === 'user'
-                      ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-tr-none'
-                      : 'bg-gray-50 text-gray-800 border border-gray-100 rounded-tl-none'
-                      }`}>
-                      {m.content}
-                      {m.role === 'ai' && (
-                        <button onClick={() => speakText(m.content)} className="block mt-1.5 text-[10px] text-blue-600 hover:text-blue-800">
-                          <Volume2 className="w-3 h-3 inline ml-1" />استمع
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  {m.card && renderCard(m.card)}
-                </div>
-              </div>
-            ))}
+              ));
+            })()}
             {isLoading && (
               <div className="flex gap-2">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center text-white shadow-sm">
@@ -1139,24 +1177,6 @@ export const SmartDiagnosisPage: React.FC = () => {
                     </div>
                   </div>
                 )}
-              </div>
-            )}
-
-            {/* Global Voice Card - Persistent UI for the current step */}
-            {voiceMode && voiceCard && (
-              <div className="px-4 pb-4 animate-in fade-in slide-in-from-bottom-4 duration-500 relative z-[60]">
-                <div className="bg-white/95 backdrop-blur-xl rounded-3xl p-4 shadow-[0_20px_50px_rgba(0,0,0,0.15)] border-2 border-blue-500/30 ring-1 ring-black/5">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
-                      <span className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em]">الخطوة الحالية</span>
-                    </div>
-                    <div className="text-[9px] font-bold text-gray-400">تفاعل صوتي نشط</div>
-                  </div>
-                  <div className="max-h-[40vh] overflow-y-auto scrollbar-none">
-                    {renderCard(voiceCard)}
-                  </div>
-                </div>
               </div>
             )}
           </div>
