@@ -181,14 +181,20 @@ export const SmartDiagnosisPage: React.FC = () => {
     const statusMsg = `📍 محافظة ${gov}. إليك العيادات المتاحة:`;
     
     const execute = () => {
+      const b = bookingRef.current;
       const list = clinics
         .filter(c => (c.governorate || '').includes(gov))
-        .filter(c => !booking.specialty || 
-          c.specialties?.some(s => booking.specialty!.keys.some(k => s.toLowerCase().includes(k.toLowerCase()))) || 
-          c.services?.some(s => booking.specialty!.keys.some(k => s.toLowerCase().includes(k.toLowerCase())))
+        .filter(c => !b.specialty || 
+          c.specialties?.some(s => b.specialty!.keys.some(k => s.toLowerCase().includes(k.toLowerCase()))) || 
+          c.services?.some(s => b.specialty!.keys.some(k => s.toLowerCase().includes(k.toLowerCase())))
         )
         .slice(0, 8);
-      pushAi(statusMsg, { kind: 'clinics', clinics: list.length > 0 ? list : clinics.slice(0, 6) });
+      
+      if (list.length > 0) {
+        pushAi(statusMsg, { kind: 'clinics', clinics: list });
+      } else {
+        pushAi(`📍 محافظة ${gov}. عذراً، لا توجد عيادات مسجلة حالياً تطابق اختيارك في هذه المنطقة. هل تود اختيار محافظة أخرى؟`, { kind: 'governorate' });
+      }
     };
 
     if (isVoice) {
@@ -198,29 +204,51 @@ export const SmartDiagnosisPage: React.FC = () => {
     }
   };
 
-  const handleClinic = (clinic: Clinic) => {
+  const handleClinic = (clinic: Clinic, isVoice = false) => {
     setBooking(prev => ({ ...prev, clinic }));
-    pushUser(`اخترت ${clinic.name}`);
-    pushAi(`اختيار رائع! 👏\nالآن اختر اليوم المناسب لموعدك:`, { kind: 'date' });
+    if (!isVoice) pushUser(`اخترت ${clinic.name}`);
+    
+    const msg = `اختيار رائع! 👏\nالآن اختر اليوم المناسب لموعدك:`;
+    if (isVoice) {
+      pushAi(msg, { kind: 'date' });
+    } else {
+      setTimeout(() => pushAiRef.current(msg, { kind: 'date' }), 200);
+    }
     setStep('date');
   };
 
-  const handleDate = (dateISO: string, label: string) => {
+  const handleDate = (dateISO: string, label: string, isVoice = false) => {
     setBooking(prev => ({ ...prev, date: dateISO }));
-    pushUser(`أريد يوم ${label}`);
-    setTimeout(() => {
-      pushAi('اختر الوقت المفضل لك:', { kind: 'time' });
+    if (!isVoice) pushUser(`أريد يوم ${label}`);
+    
+    const msg = 'اختر الوقت المفضل لك:';
+    const execute = () => {
+      pushAi(msg, { kind: 'time' });
       setStep('time');
-    }, 300);
+    };
+
+    if (isVoice) {
+      execute();
+    } else {
+      setTimeout(execute, 300);
+    }
   };
 
-  const handleTime = (time: string) => {
+  const handleTime = (time: string, isVoice = false) => {
     setBooking(prev => ({ ...prev, time }));
-    pushUser(`الساعة ${time}`);
-    setTimeout(() => {
-      pushAi('ممتاز! آخر خطوة — أدخل بياناتك لتأكيد الحجز:', { kind: 'patient' });
+    if (!isVoice) pushUser(`الساعة ${time}`);
+    
+    const msg = 'ممتاز! آخر خطوة — أدخل بياناتك لتأكيد الحجز:';
+    const execute = () => {
+      pushAi(msg, { kind: 'patient' });
       setStep('patient');
-    }, 300);
+    };
+
+    if (isVoice) {
+      execute();
+    } else {
+      setTimeout(execute, 300);
+    }
   };
 
   const handleConfirmBooking = async () => {
@@ -543,10 +571,15 @@ export const SmartDiagnosisPage: React.FC = () => {
                 }
               } else if (tool_name === 'show_clinics') {
                 setStep('clinics');
-                const list = filteredClinicsRef.current.length > 0 ? filteredClinicsRef.current : clinicsRef.current.slice(0, 5);
-                pushAi('🔄 جاري عرض العيادات المتاحة في منطقتك...', { kind: 'clinics', clinics: list });
-                const names = list.map(c => c.name).join(', ');
-                result = `Success: Showed ${list.length} clinics. Available clinics on screen are: [${names}]. Ask the user to choose one of these.`;
+                const list = filteredClinicsRef.current;
+                if (list.length > 0) {
+                  pushAiRef.current('🔄 إليك العيادات المتاحة بناءً على اختيارك:', { kind: 'clinics', clinics: list });
+                  const names = list.map(c => c.name).join(', ');
+                  result = `Success: Showed ${list.length} clinics: [${names}].`;
+                } else {
+                  pushAiRef.current('❌ عذراً، لم أجد عيادات تطابق بحثك في هذه المنطقة حالياً. يمكنك تجربة محافظة أخرى.', { kind: 'governorate' });
+                  result = 'Error: No clinics found for the current filters.';
+                }
               } else if (tool_name === 'select_clinic') {
                 const inputClinic = (parameters.clinic_name || parameters.clinic_id || parameters.name || '').toLowerCase().trim();
                 const cleanInput = inputClinic.replace('عيادة ', '').replace('مركز ', '');
@@ -558,7 +591,7 @@ export const SmartDiagnosisPage: React.FC = () => {
                          cleanInput.includes(cleanName);
                 });
                 if (c) {
-                  handleClinicRef.current(c);
+                  handleClinicRef.current(c, true);
                   result = `Success: Selected clinic ${c.name}. Proceeding to date selection.`;
                 } else {
                   result = `Error: Clinic "${inputClinic}" not found. Please choose from: ${filteredClinicsRef.current.map(x => x.name).join(', ')}`;
@@ -570,12 +603,12 @@ export const SmartDiagnosisPage: React.FC = () => {
                   result = 'Error: Invalid date';
                 } else {
                   pushAiRef.current(`🔄 تم تحديد التاريخ: ${d.toLocaleDateString('ar-IQ')}`);
-                  handleDateRef.current(d.toISOString(), d.toLocaleDateString('ar-IQ'));
+                  handleDateRef.current(d.toISOString(), d.toLocaleDateString('ar-IQ'), true);
                   result = `Success: Date picked ${parameters.date}`;
                 }
               } else if (tool_name === 'pick_time') {
                 pushAiRef.current(`🔄 تم تحديد الوقت: ${parameters.time}`);
-                handleTimeRef.current(parameters.time);
+                handleTimeRef.current(parameters.time, true);
                 result = `Success: Time picked ${parameters.time}`;
               } else if (tool_name === 'fill_patient_info') {
                 setBooking(prev => ({
