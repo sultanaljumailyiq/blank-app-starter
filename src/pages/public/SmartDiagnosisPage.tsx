@@ -142,16 +142,37 @@ export const SmartDiagnosisPage: React.FC = () => {
   const pushAi = (content: string, card?: CardKind) => {
     // نستخدم القيمة المباشرة لـ voiceModeRef لتجنب مشاكل Closure
     // البطاقات يجب أن تظهر دائماً في الدردشة حتى في وضع الصوت
-    if (voiceModeRef.current && !card) {
+    const addMsg = (c: string, cd?: CardKind): string => {
+      const id = crypto.randomUUID();
+      setMessages(prev => [...prev, { id, role: 'ai', content: c, card: cd }]);
+      return id;
+    };
+
+    if (voiceModeRef.current) {
+      // Always trigger speech for AI messages in voice mode
       setLastVoiceMsg(content.replace('🎙️ ', ''));
-      return;
+      
+      if (card) {
+        // Add text immediately to chat and get its ID
+        const msgId = addMsg(content);
+        // Delay card attachment for better flow, targeting the exact message ID
+        setTimeout(() => {
+          setMessages(prev => {
+            const updated = [...prev];
+            const idx = updated.findIndex(m => m.id === msgId);
+            if (idx !== -1) {
+              updated[idx] = { ...updated[idx], card };
+            }
+            return updated;
+          });
+        }, 600); // Slightly faster response
+        return;
+      } else {
+        return; // Speech triggered above, no card to show in chat for voice-only responses
+      }
     }
     
-    setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', content, card }]);
-    
-    if (voiceModeRef.current && content) {
-      setLastVoiceMsg(content.replace('🎙️ ', ''));
-    }
+    addMsg(content, card);
   };
 
   const pushUser = (content: string, image?: string | null) =>
@@ -461,15 +482,15 @@ export const SmartDiagnosisPage: React.FC = () => {
               first_message: 'أهلاً بك في منصة طب الأسنان الذكية! أنا مساعدك الصوتي. ما الذي تحتاجه؟',
               language: 'ar',
               prompt: {
-                prompt: `أنت المساعد الصوتي الرسمي لمنصة طب الأسنان في العراق. تتحدث بلغة عربية عراقية ودودة ومحترفة.
+                prompt: `أنت المساعد الصوتي الرسمي لمنصة حجز عيادات الأسنان في العراق. تتحدث بلغة عربية عراقية ودودة ومحترفة.
 مهمتك: مساعدة المريض في حجز موعد عبر الخطوات حصراً:
 1) اسأل عن الاختصاص → استخدم select_specialty.
-2) اسأل عن المحافظة → استخدم select_governorate.
-3) عرض العيادات → استخدم show_clinics. **هام**: لا تقترح عيادات من عندك، انتظر الأسماء التي ستظهر في نتيجة الأداة.
+2) اسأل عن المحافظة → استخدم select_governorate. إذا ذكر المستخدم مدينة مثل (تكريت، الرمادي، الناصرية) استنتج المحافظة المقابلة واستخدم الأداة.
+3) عرض العيادات → استخدم show_clinics. **هام جداً**: ممنوع منعاً باتاً ذكر عيادات من خيالك. اقرأ أسماء العيادات التي تظهر لك في نتيجة الأداة فقط.
 4) عند اختيار عيادة → استخدم select_clinic بالاسم الموجود في القائمة حصراً.
 5) اسأل عن اليوم والوقت → pick_date و pick_time.
 6) خذ بيانات المريض → fill_patient_info ثم confirm_booking.
-تذكر: اقترح فقط العيادات التي تظهر لك في أداة show_clinics.`
+تذكر: إذا لم تظهر عيادات في منطقة معينة، اعتذر واطلب منه تجربة محافظة أخرى.`
               }
             }
           }
@@ -560,7 +581,11 @@ export const SmartDiagnosisPage: React.FC = () => {
                   (inputGov.includes('الرمادي') && x === 'الأنبار') ||
                   (inputGov.includes('الحلة') && x === 'بابل') ||
                   (inputGov.includes('العمارة') && x === 'ميسان') ||
-                  (inputGov.includes('الناصرية') && x === 'ذي قار')
+                  (inputGov.includes('الناصرية') && x === 'ذي قار') ||
+                  (inputGov.includes('الكوت') && x === 'واسط') ||
+                  (inputGov.includes('السماوة') && x === 'المثنى') ||
+                  (inputGov.includes('الديوانية') && x === 'القادسية') ||
+                  (inputGov.includes('بعقوبة') && x === 'ديالى')
                 );
                 if (g) {
                   handleGovernorateRef.current(g, true);
@@ -573,9 +598,14 @@ export const SmartDiagnosisPage: React.FC = () => {
                 setStep('clinics');
                 const list = filteredClinicsRef.current;
                 if (list.length > 0) {
-                  pushAiRef.current('🔄 إليك العيادات المتاحة بناءً على اختيارك:', { kind: 'clinics', clinics: list });
+                  const namesList = list.slice(0, 3).map(c => c.name).join('، و');
+                  const msg = list.length === 1 
+                    ? `لقد وجدت لك عيادة ${list[0].name} في هذه المنطقة. هل تود الحجز فيها؟`
+                    : `لقد وجدت لك ${list.length} عيادات في هذه المنطقة، منها عيادة ${namesList}. أيهما تفضل؟`;
+                  
+                  pushAiRef.current(`🔄 ${msg}`, { kind: 'clinics', clinics: list });
                   const names = list.map(c => c.name).join(', ');
-                  result = `Success: Showed ${list.length} clinics: [${names}].`;
+                  result = `Success: Showed ${list.length} clinics: [${names}]. STRICT INSTRUCTION: ONLY suggest clinics from this exact list. Do NOT mention any other clinic names even if you think you know them.`;
                 } else {
                   pushAiRef.current('❌ عذراً، لم أجد عيادات تطابق بحثك في هذه المنطقة حالياً. يمكنك تجربة محافظة أخرى.', { kind: 'governorate' });
                   result = 'Error: No clinics found for the current filters.';
@@ -756,25 +786,36 @@ export const SmartDiagnosisPage: React.FC = () => {
         return d;
       });
       return (
-        <div className="-mx-2 mt-3 overflow-x-auto pb-2">
-          <div className="flex gap-2 px-2">
-            {days.map(d => {
-              const dayName = d.toLocaleDateString('ar-IQ', { weekday: 'short' });
-              const dayNum = d.getDate();
-              const month = d.toLocaleDateString('ar-IQ', { month: 'short' });
-              const iso = d.toISOString();
-              return (
-                <button
-                  key={iso}
-                  onClick={() => handleDate(iso, `${dayName} ${dayNum} ${month}`)}
-                  className="shrink-0 w-16 bg-white border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 rounded-xl py-2 px-1 transition-all text-center hover:scale-105"
-                >
-                  <div className="text-[10px] text-gray-500">{dayName}</div>
-                  <div className="text-lg font-bold text-gray-900">{dayNum}</div>
-                  <div className="text-[10px] text-gray-500">{month}</div>
-                </button>
-              );
-            })}
+        <div className="space-y-3">
+          {booking.clinic && (
+            <div className="bg-blue-50 border border-blue-100 p-2 rounded-xl flex items-center gap-2 mb-1 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center text-xs shadow-sm">🏥</div>
+              <div className="flex-1">
+                <p className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">العيادة المختارة</p>
+                <p className="text-sm font-bold text-gray-900 leading-tight">{booking.clinic.name}</p>
+              </div>
+            </div>
+          )}
+          <div className="-mx-2 mt-1 overflow-x-auto pb-2 scrollbar-thin">
+            <div className="flex gap-2 px-2">
+              {days.map(d => {
+                const dayName = d.toLocaleDateString('ar-IQ', { weekday: 'short' });
+                const dayNum = d.getDate();
+                const month = d.toLocaleDateString('ar-IQ', { month: 'short' });
+                const iso = d.toISOString();
+                return (
+                  <button
+                    key={iso}
+                    onClick={() => handleDate(iso, `${dayName} ${dayNum} ${month}`)}
+                    className="shrink-0 w-16 bg-white border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 rounded-xl py-2 px-1 transition-all text-center hover:scale-105"
+                  >
+                    <div className="text-[10px] text-gray-500">{dayName}</div>
+                    <div className="text-lg font-bold text-gray-900">{dayNum}</div>
+                    <div className="text-[10px] text-gray-500">{month}</div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       );
