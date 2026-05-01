@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useConversation } from '@elevenlabs/react';
 import {
   Brain, MessageCircle, User, Image as ImageIcon, X, MapPin, Calendar as CalendarIcon,
-  Mic, Volume2, Send, Phone, Check, ChevronLeft, Sparkles, Stethoscope, Baby, Scissors,
+  Mic, Volume2, Send, Phone, Check, ChevronLeft, ChevronRight, Sparkles, Stethoscope, Baby, Scissors,
   Smile, Activity, Crown, Clock, PhoneOff, Loader2, Heart, Bone, Pill
 } from 'lucide-react';
 import { Button } from '../../components/common/Button';
@@ -162,24 +162,24 @@ export const SmartDiagnosisPage: React.FC = () => {
   const handleSpecialty = (sp: typeof SPECIALTIES[number], isVoice = false) => {
     setBooking(prev => ({ ...prev, specialty: sp }));
     if (!isVoice) pushUser(`أحتاج ${sp.label}`);
-    
+
     setStep('governorate');
     setTimeout(() => {
       pushAiRef.current(`📋 تم اختيار ${sp.label}. يرجى اختيار المحافظة:`, { kind: 'governorate' });
-    }, 200); 
+    }, 200);
   };
 
   const handleGovernorate = (gov: string, isVoice = false) => {
     setBooking(prev => ({ ...prev, governorate: gov }));
     if (!isVoice) pushUser(`أنا في ${gov}`);
-    
+
     setStep('clinics');
     setTimeout(() => {
       const list = clinics
         .filter(c => (c.governorate || '').includes(gov))
         .filter(c => !booking.specialty || c.specialties?.some(s => booking.specialty!.keys.some(k => s.toLowerCase().includes(k.toLowerCase()))) || c.services?.some(s => booking.specialty!.keys.some(k => s.toLowerCase().includes(k.toLowerCase()))))
         .slice(0, 8);
-      
+
       const statusMsg = `📍 محافظة ${gov}. إليك العيادات المتاحة:`;
       pushAiRef.current(statusMsg, { kind: 'clinics', clinics: list.length > 0 ? list : clinics.slice(0, 6) });
     }, 200);
@@ -252,7 +252,7 @@ export const SmartDiagnosisPage: React.FC = () => {
     if ((!input.trim() && !imagePreview) || isLoading) return;
     const userText = input;
     const img = imagePreview;
-    
+
     // 1. إذا كان المساعد الصوتي فعالاً، نرسل النص لخادم ElevenLabs مباشرة
     if (voiceMode && wsRef.current?.readyState === WebSocket.OPEN) {
       pushUser(userText);
@@ -355,7 +355,7 @@ export const SmartDiagnosisPage: React.FC = () => {
       scriptProcessorRef.current = null;
       mediaSourceRef.current = null;
     }
-    inputAudioCtxRef.current?.close().catch(() => {});
+    inputAudioCtxRef.current?.close().catch(() => { });
     inputAudioCtxRef.current = null;
     // Stop mic stream
     micStreamRef.current?.getTracks().forEach(t => t.stop());
@@ -367,6 +367,7 @@ export const SmartDiagnosisPage: React.FC = () => {
     audioQueueRef.current = [];
     isPlayingRef.current = false;
     setVoiceMode(false);
+    voiceModeRef.current = false; // تحديث فوري
     setLastVoiceMsg('');
   }, []);
 
@@ -388,8 +389,9 @@ export const SmartDiagnosisPage: React.FC = () => {
       ws.onopen = () => {
         console.log('[ElevenLabs WS] connected');
         setVoiceMode(true);
+        voiceModeRef.current = true;
         setIsConnectingVoice(false);
-        pushAi('🎙️ المساعد الصوتي متصل، تكلم الآن…');
+        pushAiRef.current('🎙️ المساعد الصوتي متصل، تكلم الآن…');
 
         // إرسال إعدادات الجلسة — نطلب PCM_22050 كمخرج صوتي
         ws.send(JSON.stringify({
@@ -458,8 +460,8 @@ export const SmartDiagnosisPage: React.FC = () => {
             }
           } else if (msg.type === 'agent_response' || msg.type === 'agent_response_correction') {
             const text = msg.agent_response_event?.agent_response || msg.agent_response || '';
-            if (text) { 
-              pushAiRef.current(`🎙️ ${text}`); 
+            if (text) {
+              pushAiRef.current(`🎙️ ${text}`);
             }
           } else if (msg.type === 'user_transcript') {
             const text = msg.user_transcription_event?.user_transcript || '';
@@ -472,64 +474,64 @@ export const SmartDiagnosisPage: React.FC = () => {
             if (!toolCall) return;
             const { tool_name, tool_call_id, parameters } = toolCall;
             let result = '';
-            
+
             try {
               if (tool_name === 'select_specialty') {
                 const inputSpec = parameters.specialty?.toLowerCase() || '';
-                const sp = SPECIALTIES.find(s => 
-                  s.keys.some(k => inputSpec.includes(k.toLowerCase()) || k.toLowerCase().includes(inputSpec)) || 
-                  s.label.includes(inputSpec) || 
+                const sp = SPECIALTIES.find(s =>
+                  s.keys.some(k => inputSpec.includes(k.toLowerCase()) || k.toLowerCase().includes(inputSpec)) ||
+                  s.label.includes(inputSpec) ||
                   inputSpec.includes(s.label) ||
                   (inputSpec.includes('ألم') && s.id === 'general') ||
                   (inputSpec.includes('وجع') && s.id === 'general')
                 );
-                if (sp) { 
-                  handleSpecialty(sp, true); 
-                  result = `Success: Selected specialty ${sp.label}. UI is now showing governorate selection card.`; 
-                } else { 
-                  pushAi(`لم أستطع مطابقة "${inputSpec}" مع الاختصاصات المتاحة. يرجى الاختيار من القائمة:`, { kind: 'specialty' }); 
-                  result = 'Error: Specialty not matched'; 
+                if (sp) {
+                  handleSpecialty(sp, true);
+                  result = `Success: Selected specialty ${sp.label}. UI is now showing governorate selection card.`;
+                } else {
+                  pushAi(`لم أستطع مطابقة "${inputSpec}" مع الاختصاصات المتاحة. يرجى الاختيار من القائمة:`, { kind: 'specialty' });
+                  result = 'Error: Specialty not matched';
                 }
               } else if (tool_name === 'select_governorate') {
                 const inputGov = parameters.governorate?.trim() || '';
                 const g = GOVERNORATES.find(x => inputGov.includes(x) || x.includes(inputGov));
-                if (g) { 
-                  handleGovernorate(g, true); 
-                  result = `Success: Selected governorate ${g}. UI is now showing clinics list.`; 
-                } else { 
-                  pushAi(`المحافظة "${inputGov}" غير متوفرة حالياً، يرجى الاختيار من القائمة:`, { kind: 'governorate' }); 
-                  result = 'Error: Governorate not matched'; 
+                if (g) {
+                  handleGovernorate(g, true);
+                  result = `Success: Selected governorate ${g}. UI is now showing clinics list.`;
+                } else {
+                  pushAi(`المحافظة "${inputGov}" غير متوفرة حالياً، يرجى الاختيار من القائمة:`, { kind: 'governorate' });
+                  result = 'Error: Governorate not matched';
                 }
               } else if (tool_name === 'show_clinics') {
                 pushAi('🔄 جاري عرض العيادات المتاحة في منطقتك...', { kind: 'clinics', clinics: clinicsRef.current });
                 result = `Success: ${clinicsRef.current.length} clinics shown`;
               } else if (tool_name === 'select_clinic') {
                 const inputClinic = parameters.clinic_name?.toLowerCase() || '';
-                const c = clinicsRef.current.find(cl => 
-                  cl.name.toLowerCase().includes(inputClinic) || 
+                const c = clinicsRef.current.find(cl =>
+                  cl.name.toLowerCase().includes(inputClinic) ||
                   inputClinic.includes(cl.name.toLowerCase())
                 );
-                if (c) { 
+                if (c) {
                   pushAi(`🔄 تم اختيار عيادة: ${c.name}`);
-                  handleClinic(c); 
-                  result = `Success: Selected clinic ${c.name}`; 
+                  handleClinic(c);
+                  result = `Success: Selected clinic ${c.name}`;
                 } else {
                   pushAi(`لم أجد عيادة باسم "${inputClinic}".`);
                   result = 'Error: Clinic not found';
                 }
               } else if (tool_name === 'pick_date') {
                 const d = new Date(parameters.date);
-                if (isNaN(d.getTime())) { 
-                  pushAi('يرجى اختيار تاريخ صحيح:', { kind: 'date' }); 
-                  result = 'Error: Invalid date'; 
-                } else { 
+                if (isNaN(d.getTime())) {
+                  pushAi('يرجى اختيار تاريخ صحيح:', { kind: 'date' });
+                  result = 'Error: Invalid date';
+                } else {
                   pushAi(`🔄 تم تحديد التاريخ: ${d.toLocaleDateString('ar-IQ')}`);
-                  handleDate(d.toISOString(), d.toLocaleDateString('ar-IQ')); 
-                  result = `Success: Date picked ${parameters.date}`; 
+                  handleDate(d.toISOString(), d.toLocaleDateString('ar-IQ'));
+                  result = `Success: Date picked ${parameters.date}`;
                 }
               } else if (tool_name === 'pick_time') {
                 pushAi(`🔄 تم تحديد الوقت: ${parameters.time}`);
-                handleTime(parameters.time); 
+                handleTime(parameters.time);
                 result = `Success: Time picked ${parameters.time}`;
               } else if (tool_name === 'fill_patient_info') {
                 setBooking(prev => ({
@@ -548,7 +550,7 @@ export const SmartDiagnosisPage: React.FC = () => {
                   result = 'Error: Missing name or phone';
                   pushAi('يرجى تزويدي باسمك الكامل ورقم هاتفك لإتمام الحجز.');
                 } else {
-                  await handleConfirmBooking(); 
+                  await handleConfirmBooking();
                   result = 'Success: Booking confirmed';
                 }
               } else {
@@ -830,15 +832,14 @@ export const SmartDiagnosisPage: React.FC = () => {
 
         {/* Chat Area */}
         <div className="flex-1 flex flex-col relative overflow-hidden bg-gray-50/30">
-          <div 
+          <div
             className="flex-1 overflow-y-auto p-4 space-y-5 scroll-smooth"
             onScroll={handleScroll}
           >
             {messages.map((m) => (
               <div key={m.id} className={`flex gap-2 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1 shadow-sm ${
-                  m.role === 'user' ? 'bg-gradient-to-br from-gray-600 to-gray-500 text-white' : 'bg-gradient-to-br from-blue-600 to-cyan-500 text-white'
-                }`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1 shadow-sm ${m.role === 'user' ? 'bg-gradient-to-br from-gray-600 to-gray-500 text-white' : 'bg-gradient-to-br from-blue-600 to-cyan-500 text-white'
+                  }`}>
                   {m.role === 'user' ? <User className="w-4 h-4" /> : <Brain className="w-4 h-4" />}
                 </div>
                 <div className="max-w-[85%] flex-1">
@@ -846,11 +847,10 @@ export const SmartDiagnosisPage: React.FC = () => {
                     <img src={m.image} alt="" className="rounded-lg mb-1 max-w-[200px] border border-gray-200" />
                   )}
                   {m.content && (
-                    <div className={`p-3 rounded-2xl text-sm whitespace-pre-wrap leading-relaxed ${
-                      m.role === 'user'
+                    <div className={`p-3 rounded-2xl text-sm whitespace-pre-wrap leading-relaxed ${m.role === 'user'
                         ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-tr-none'
                         : 'bg-gray-50 text-gray-800 border border-gray-100 rounded-tl-none'
-                    }`}>
+                      }`}>
                       {m.content}
                       {m.role === 'ai' && (
                         <button onClick={() => speakText(m.content)} className="block mt-1.5 text-[10px] text-blue-600 hover:text-blue-800">
@@ -877,80 +877,99 @@ export const SmartDiagnosisPage: React.FC = () => {
             )}
 
 
-            <div ref={messagesEndRef} className="h-4" />
+            {/* Persistent spacer to prevent buttons from covering messages and layout shifts */}
+            <div className="h-24 shrink-0" />
+            <div ref={messagesEndRef} className="h-2" />
           </div>
 
-          {/* Floating Talk Button (shows when scrolled down) */}
+          {/* Talk Buttons Container (Stable Layout) */}
           {!voiceMode && (
-            <div className={`absolute left-4 bottom-20 transition-all duration-300 z-20 ${showFloatingVoice ? 'scale-100 opacity-100 translate-y-0' : 'scale-50 opacity-0 translate-y-10 pointer-events-none'}`}>
-              <button
-                onClick={startVoiceMode}
-                disabled={isConnectingVoice}
-                className="bg-gradient-to-r from-blue-600 to-blue-500 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-2xl hover:scale-110 transition-all disabled:opacity-70 border border-blue-400/50"
-                aria-label="تحدث صوتياً"
-              >
-                {isConnectingVoice ? <Loader2 className="w-6 h-6 animate-spin" /> : <Mic className="w-6 h-6" />}
-              </button>
-            </div>
-          )}
+            <div className="relative h-0 z-40">
+              {/* Floating Mini Button */}
+              <div className={`absolute left-4 bottom-6 transition-all duration-500 ${showFloatingVoice ? 'scale-100 opacity-100 translate-y-0' : 'scale-0 opacity-0 translate-y-10 pointer-events-none'}`}>
+                <button
+                  onClick={startVoiceMode}
+                  disabled={isConnectingVoice}
+                  className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-2xl hover:scale-110 active:scale-95 transition-all disabled:opacity-70 border-4 border-white"
+                >
+                  {isConnectingVoice ? <Loader2 className="w-6 h-6 animate-spin" /> : <Mic className="w-6 h-6" />}
+                </button>
+              </div>
 
-          {/* Large Talk Button (Fixed above input) */}
-          {!voiceMode && !showFloatingVoice && (
-            <div className="bg-white/80 backdrop-blur-md px-4 py-3 border-t border-gray-100 flex justify-center animate-in fade-in slide-in-from-bottom-4 duration-500 z-10 relative shadow-[0_-10px_20px_rgba(0,0,0,0.02)]">
-              <button
-                onClick={startVoiceMode}
-                disabled={isConnectingVoice}
-                className="group relative overflow-hidden bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600 text-white px-8 py-3 rounded-3xl font-bold flex items-center gap-3 shadow-xl hover:shadow-2xl hover:scale-[1.02] transition-all disabled:opacity-70 disabled:hover:scale-100 w-full max-w-sm justify-center border border-blue-400/30"
-              >
-                <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
-                {isConnectingVoice ? (
-                  <Loader2 className="w-6 h-6 animate-spin" />
-                ) : (
-                  <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-md group-hover:scale-110 transition-transform shrink-0 shadow-inner">
-                    <Mic className="w-5 h-5" />
-                  </div>
-                )}
-                <div className="text-right">
-                  <div className="text-base leading-tight">تحدث مع المساعد</div>
-                  <div className="text-[10px] text-blue-100 font-normal mt-0.5">أسرع طريقة لإتمام حجزك</div>
-                </div>
-              </button>
-            </div>
-          )}
-
-          {/* Voice Bubble Floating above Input */}
-          {voiceMode && lastVoiceMsg && (
-            <div className="absolute bottom-[100%] left-0 right-0 px-4 pb-3 animate-in fade-in slide-in-from-bottom-4 duration-500 z-30 pointer-events-none">
-              <div className="bg-white/90 backdrop-blur-xl border border-indigo-100/50 rounded-2xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.08)] flex items-start gap-3 pointer-events-auto max-w-[95%] mx-auto">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-lg shadow-indigo-200">
-                  <Mic className="w-4 h-4 text-white" />
-                </div>
-                <div className="flex-1">
-                  <div className="text-[10px] text-indigo-400 font-bold mb-0.5 uppercase tracking-wider">المساعد الصوتي</div>
-                  <p className="text-xs text-gray-800 font-medium leading-relaxed text-right">{lastVoiceMsg}</p>
+              {/* Large Entry Button */}
+              <div className={`absolute bottom-0 left-0 right-0 px-5 pb-4 transition-all duration-500 ${!showFloatingVoice ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'}`}>
+                <div className="bg-white/80 backdrop-blur-xl p-1 rounded-[2.2rem] shadow-[0_-15px_30px_rgba(0,0,0,0.03)] border border-gray-100">
+                  <button
+                    onClick={startVoiceMode}
+                    disabled={isConnectingVoice}
+                    className="group relative overflow-hidden bg-gradient-to-br from-blue-600 via-indigo-600 to-blue-700 text-white px-10 py-4 rounded-[2rem] font-black flex items-center gap-4 shadow-[0_15px_40px_rgba(37,99,235,0.3)] hover:shadow-[0_20px_50px_rgba(37,99,235,0.4)] hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-70 w-full justify-center border-b-4 border-blue-800"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                    <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-md shadow-inner relative">
+                      <div className="absolute inset-0 bg-white rounded-full animate-ping opacity-20" />
+                      <Mic className="w-6 h-6 text-white" />
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg leading-tight tracking-tight">تحدث مع المساعد الذكي</div>
+                      <div className="text-[10px] text-blue-100 font-bold mt-0.5 opacity-80 uppercase">تجربة حجز فورية بالصوت</div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 opacity-50 group-hover:translate-x-[-5px] transition-transform" />
+                  </button>
                 </div>
               </div>
-              {/* Triangle pointer */}
-              <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[8px] border-t-white/90 mx-auto mt-[-1px] drop-shadow-sm" />
             </div>
           )}
 
-          {/* Input */}
-          <div className="border-t border-gray-100 p-3 bg-white relative z-20">
+          {/* Voice Bubble Area */}
+          <div className="relative z-40">
+            {voiceMode && (
+              <div className="px-4 pb-2 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                {/* Enhanced Smart Bubble */}
+                {lastVoiceMsg && (
+                  <div className="mb-4 transform -translate-y-2">
+                    <div className="bg-gradient-to-br from-indigo-600/90 to-blue-700/90 backdrop-blur-xl text-white border border-white/20 rounded-3xl p-4 shadow-[0_20px_50px_rgba(79,70,229,0.3)] flex items-start gap-4 max-w-[95%] mx-auto relative group overflow-hidden">
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                      <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0 shadow-inner">
+                        <div className="w-2 h-2 bg-white rounded-full animate-ping" />
+                        <Mic className="w-5 h-5 text-white absolute" />
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <div className="text-[10px] text-white/60 font-black uppercase tracking-[0.2em]">رد المساعد الذكي</div>
+                        <p className="text-sm font-medium leading-relaxed text-right">{lastVoiceMsg}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Controls & Input Area */}
+          <div className="border-t border-gray-100 p-4 bg-white relative z-50">
+            {voiceMode && (
+              <div className="flex justify-center mb-4 mt-[-25px] relative z-50">
+                <button 
+                  onClick={stopVoiceMode}
+                  className="bg-gradient-to-br from-red-500 to-rose-600 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-[0_10px_30px_rgba(244,63,94,0.4)] hover:scale-110 active:scale-95 transition-all border-4 border-white group"
+                >
+                  <PhoneOff className="w-7 h-7 group-hover:rotate-12 transition-transform" />
+                </button>
+              </div>
+            )}
             {imagePreview && (
               <div className="flex items-center gap-2 mb-2 p-2 bg-blue-50 rounded-lg w-fit border border-blue-100">
                 <img src={imagePreview} alt="" className="w-10 h-10 object-cover rounded" />
-                <button onClick={() => setImagePreview(null)} className="text-red-500 p-1 hover:bg-red-50 rounded-full" aria-label="إغلاق معاينة الصورة">
+                <button onClick={() => setImagePreview(null)} className="text-red-500 p-1 hover:bg-red-50 rounded-full">
                   <X className="w-4 h-4" />
                 </button>
               </div>
             )}
             <div className={`flex items-center gap-1.5 rounded-2xl p-1.5 focus-within:border-blue-400 focus-within:ring-4 transition-all ${voiceMode ? 'bg-indigo-50 border-indigo-200 focus-within:ring-indigo-100' : 'bg-gray-50 border-gray-200 focus-within:ring-blue-50'}`}>
-              <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" aria-label="رفع صورة" />
-              <button onClick={() => fileInputRef.current?.click()} className="p-2 hover:bg-white rounded-xl text-gray-500 hover:text-blue-600 transition-colors" aria-label="إرفاق صورة">
+              <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" />
+              <button onClick={() => fileInputRef.current?.click()} className="p-2 hover:bg-white rounded-xl text-gray-500 hover:text-blue-600 transition-colors">
                 <ImageIcon className="w-5 h-5" />
               </button>
-              <button onClick={toggleListening} className={`p-2 rounded-xl transition-colors ${isListening ? 'bg-red-100 text-red-600 animate-pulse' : 'hover:bg-white text-gray-500 hover:text-blue-600'}`} aria-label={isListening ? 'إيقاف التسجيل' : 'بدء التسجيل الصوتي'}>
+              <button onClick={toggleListening} className={`p-2 rounded-xl transition-colors ${isListening ? 'bg-red-100 text-red-600 animate-pulse' : 'hover:bg-white text-gray-500 hover:text-blue-600'}`}>
                 <Mic className="w-5 h-5" />
               </button>
               <input
@@ -966,7 +985,6 @@ export const SmartDiagnosisPage: React.FC = () => {
                   <button
                     onClick={stopVoiceMode}
                     className="bg-red-100 hover:bg-red-200 text-red-600 p-2 rounded-xl transition-all"
-                    aria-label="إنهاء الاتصال"
                   >
                     <PhoneOff className="w-5 h-5" />
                   </button>
@@ -974,8 +992,7 @@ export const SmartDiagnosisPage: React.FC = () => {
                 <button
                   onClick={handleSendMessage}
                   disabled={(!input.trim() && !imagePreview) || isLoading}
-                  className={`text-white p-2 rounded-xl disabled:opacity-40 transition-all ${voiceMode ? 'bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700' : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'}`}
-                  aria-label="إرسال الرسالة"
+                  className={`text-white p-2 rounded-xl disabled:opacity-40 transition-all ${voiceMode ? 'bg-gradient-to-r from-indigo-500 to-purple-600' : 'bg-gradient-to-r from-blue-600 to-indigo-600'}`}
                 >
                   <Send className="w-5 h-5" />
                 </button>
