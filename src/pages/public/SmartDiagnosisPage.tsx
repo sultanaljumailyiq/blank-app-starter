@@ -68,13 +68,16 @@ export const SmartDiagnosisPage: React.FC = () => {
   const navigate = useNavigate();
   const { clinics } = usePublicClinics();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  // ElevenLabs WebSocket refs (replaces WebRTC to fix ICE/NAT empty-audio issues)
+  // ElevenLabs WebSocket refs — raw PCM16 pipeline (NO MediaRecorder/WebM)
   const wsRef = useRef<WebSocket | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);      // output (24kHz)
+  const inputAudioCtxRef = useRef<AudioContext | null>(null); // input (16kHz)
+  const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const mediaSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const audioQueueRef = useRef<ArrayBuffer[]>([]);
   const isPlayingRef = useRef(false);
   const micStreamRef = useRef<MediaStream | null>(null);
+  const [lastVoiceMsg, setLastVoiceMsg] = useState<string>('');
   const [input, setInput] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -296,19 +299,28 @@ export const SmartDiagnosisPage: React.FC = () => {
   // (useConversation hook removed since we use raw WebSocket now)
 
 
-  // ─── ElevenLabs WebSocket audio player ───────────────────────────────────
+  // ─── Decode + play PCM16 (24kHz) coming from ElevenLabs ─────────────────
   const playNextChunk = useCallback(async () => {
     if (isPlayingRef.current || audioQueueRef.current.length === 0 || !audioCtxRef.current) return;
     isPlayingRef.current = true;
-    const chunk = audioQueueRef.current.shift()!;
+    const raw = audioQueueRef.current.shift()!;
     try {
-      const buf = await audioCtxRef.current.decodeAudioData(chunk.slice(0));
-      const src = audioCtxRef.current.createBufferSource();
+      // ElevenLabs sends PCM_16000 or PCM_24000 (Int16, little-endian)
+      const int16 = new Int16Array(raw);
+      const float32 = new Float32Array(int16.length);
+      for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 32768;
+
+      const ctx = audioCtxRef.current;
+      const buf = ctx.createBuffer(1, float32.length, ctx.sampleRate);
+      buf.copyToChannel(float32, 0);
+
+      const src = ctx.createBufferSource();
       src.buffer = buf;
-      src.connect(audioCtxRef.current.destination);
+      src.connect(ctx.destination);
       src.onended = () => { isPlayingRef.current = false; playNextChunk(); };
       src.start();
-    } catch {
+    } catch (e) {
+      console.warn('[Audio] decode error', e);
       isPlayingRef.current = false;
       playNextChunk();
     }
@@ -316,12 +328,26 @@ export const SmartDiagnosisPage: React.FC = () => {
 
   // ─── Stop voice session ───────────────────────────────────────────────────
   const stopVoiceMode = useCallback(() => {
-    mediaRecorderRef.current?.stop();
+    // Stop ScriptProcessor + input AudioContext
+    if (scriptProcessorRef.current && mediaSourceRef.current) {
+      mediaSourceRef.current.disconnect();
+      scriptProcessorRef.current.disconnect();
+      scriptProcessorRef.current = null;
+      mediaSourceRef.current = null;
+    }
+    inputAudioCtxRef.current?.close().catch(() => {});
+    inputAudioCtxRef.current = null;
+    // Stop mic stream
     micStreamRef.current?.getTracks().forEach(t => t.stop());
+    micStreamRef.current = null;
+    // Close WS
     wsRef.current?.close();
+    wsRef.current = null;
+    // Reset playback
     audioQueueRef.current = [];
     isPlayingRef.current = false;
     setVoiceMode(false);
+    setLastVoiceMsg('');
   }, []);
 
   // ─── Start voice session (WebSocket, bypasses WebRTC/ICE NAT issues) ──────
@@ -345,7 +371,7 @@ export const SmartDiagnosisPage: React.FC = () => {
         setIsConnectingVoice(false);
         pushAi('🎙️ المساعد الصوتي متصل، تكلم الآن…');
 
-        // إرسال إعدادات الجلسة
+        // إرسال إعدادات الجلسة — نطلب PCM_22050 كمخرج صوتي
         ws.send(JSON.stringify({
           type: 'conversation_initiation_client_data',
           conversation_config_override: {
@@ -367,23 +393,34 @@ export const SmartDiagnosisPage: React.FC = () => {
           }
         }));
 
-        // بدء تسجيل الصوت وإرساله بشكل مستمر
-        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-          ? 'audio/webm;codecs=opus'
-          : 'audio/webm';
-        const recorder = new MediaRecorder(stream, { mimeType });
-        mediaRecorderRef.current = recorder;
-        recorder.ondataavailable = (e) => {
-          if (ws.readyState === WebSocket.OPEN && e.data.size > 0) {
-            e.data.arrayBuffer().then(buf => {
-              const bytes = new Uint8Array(buf);
-              let bin = '';
-              bytes.forEach(b => (bin += String.fromCharCode(b)));
-              ws.send(JSON.stringify({ user_audio_chunk: btoa(bin) }));
-            });
+        // ─ Capture PCM16 at 16kHz via ScriptProcessor and send to ElevenLabs ─
+        // ElevenLabs expects: raw Int16 LE PCM, 16000 Hz, mono — NOT WebM/Opus
+        const inputCtx = new AudioContext({ sampleRate: 16000 });
+        inputAudioCtxRef.current = inputCtx;
+        const micSource = inputCtx.createMediaStreamSource(stream);
+        mediaSourceRef.current = micSource;
+        // bufferSize=2048 → frames of 128ms @ 16kHz (always multiple of 2)
+        const processor = inputCtx.createScriptProcessor(2048, 1, 1);
+        scriptProcessorRef.current = processor;
+        processor.onaudioprocess = (e) => {
+          if (ws.readyState !== WebSocket.OPEN) return;
+          const float32 = e.inputBuffer.getChannelData(0);
+          const int16 = new Int16Array(float32.length);
+          for (let i = 0; i < float32.length; i++) {
+            int16[i] = Math.round(Math.min(1, Math.max(-1, float32[i])) * 32767);
           }
+          // Encode as base64 raw PCM16 LE
+          const bytes = new Uint8Array(int16.buffer);
+          let bin = '';
+          for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+          ws.send(JSON.stringify({ user_audio_chunk: btoa(bin) }));
         };
-        recorder.start(250);
+        micSource.connect(processor);
+        // Connect to a silent gain node so the processor actually fires
+        const silentGain = inputCtx.createGain();
+        silentGain.gain.value = 0;
+        processor.connect(silentGain);
+        silentGain.connect(inputCtx.destination);
       };
 
       ws.onmessage = async (event) => {
@@ -392,15 +429,18 @@ export const SmartDiagnosisPage: React.FC = () => {
           if (msg.type === 'audio') {
             const b64 = msg.audio_event?.audio_base_64 || msg.audio || '';
             if (b64) {
+              // Decode base64 → raw PCM16 Int16 LE buffer
               const bin = atob(b64);
               const bytes = new Uint8Array(bin.length);
               for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-              audioQueueRef.current.push(bytes.buffer);
+              // Ensure even byte length (Int16 requires 2 bytes/sample)
+              const aligned = bytes.length % 2 === 0 ? bytes.buffer : bytes.buffer.slice(0, bytes.length - 1);
+              audioQueueRef.current.push(aligned);
               playNextChunk();
             }
           } else if (msg.type === 'agent_response' || msg.type === 'agent_response_correction') {
             const text = msg.agent_response_event?.agent_response || msg.agent_response || '';
-            if (text) pushAi(`🎙️ ${text}`);
+            if (text) { pushAi(`🎙️ ${text}`); setLastVoiceMsg(text); }
           } else if (msg.type === 'user_transcript') {
             const text = msg.user_transcription_event?.user_transcript || '';
             if (text) pushUser(`🎙️ ${text}`);
@@ -870,28 +910,13 @@ export const SmartDiagnosisPage: React.FC = () => {
             </div>
           </div>
 
-          {voiceMode && (
-            <div className="border-t border-gray-100 p-6 bg-gradient-to-b from-white to-blue-50/50 text-center relative z-20 shadow-[0_-10px_20px_rgba(0,0,0,0.02)]">
-              {/* Transcript Display */}
-              <div className="mb-6 min-h-[3rem] flex items-end justify-center">
-                <p className="text-sm font-bold text-gray-800 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  {messages.filter(m => m.role === 'ai').pop()?.content?.replace(/🎙️ /g, '') || 'المساعد الصوتي متصل…'}
-                </p>
-              </div>
-
-              <div className="flex items-center justify-center gap-4">
-                <button onClick={stopVoiceMode} className="w-10 h-10 rounded-full bg-red-100 hover:bg-red-200 flex items-center justify-center text-red-600 transition-all shadow-sm">
-                  <X className="w-5 h-5" />
-                </button>
-                <div className="relative">
-                  <div className={`w-16 h-16 rounded-full bg-gradient-to-br from-blue-600 to-blue-500 flex items-center justify-center text-white shadow-xl ${isPlayingRef.current ? 'animate-pulse scale-110' : ''} transition-all duration-300`}>
-                    <Mic className="w-7 h-7" />
-                  </div>
-                  <div className="absolute inset-0 rounded-full border-4 border-blue-300 animate-ping opacity-50" />
+          {voiceMode && lastVoiceMsg && (
+            <div className="px-4 pt-2 pb-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-100 rounded-2xl px-4 py-2.5 flex items-start gap-2">
+                <div className="w-5 h-5 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
+                  <Mic className="w-2.5 h-2.5 text-white" />
                 </div>
-              </div>
-              <div className="text-[10px] font-bold text-blue-400 mt-4">
-                جاري التحدث مع المساعد الصوتي
+                <p className="text-xs text-indigo-800 font-medium leading-relaxed flex-1 text-right">{lastVoiceMsg}</p>
               </div>
             </div>
           )}
