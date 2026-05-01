@@ -111,6 +111,7 @@ export const SmartDiagnosisPage: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
+  const pendingCardRef = useRef<{ kind: CardKind['kind']; clinics?: Clinic[] } | null>(null);
   const [isListening, setIsListening] = useState(false);
   const initialMessageSent = useRef(false);
 
@@ -140,8 +141,6 @@ export const SmartDiagnosisPage: React.FC = () => {
   }, [messages, isLoading]);
 
   const pushAi = (content: string, card?: CardKind) => {
-    // نستخدم القيمة المباشرة لـ voiceModeRef لتجنب مشاكل Closure
-    // البطاقات يجب أن تظهر دائماً في الدردشة حتى في وضع الصوت
     const addMsg = (c: string, cd?: CardKind): string => {
       const id = crypto.randomUUID();
       setMessages(prev => [...prev, { id, role: 'ai', content: c, card: cd }]);
@@ -153,23 +152,10 @@ export const SmartDiagnosisPage: React.FC = () => {
       setLastVoiceMsg(content.replace('🎙️ ', ''));
       
       if (card) {
-        // Add text immediately to chat and get its ID
-        const msgId = addMsg(content);
-        // Delay card attachment for better flow, targeting the exact message ID
-        setTimeout(() => {
-          setMessages(prev => {
-            const updated = [...prev];
-            const idx = updated.findIndex(m => m.id === msgId);
-            if (idx !== -1) {
-              updated[idx] = { ...updated[idx], card };
-            }
-            return updated;
-          });
-        }, 600); // Slightly faster response
-        return;
-      } else {
-        return; // Speech triggered above, no card to show in chat for voice-only responses
+        // Queue the card metadata to be attached to the next incoming WS message
+        pendingCardRef.current = { kind: card.kind, clinics: (card as any).clinics };
       }
+      return;
     }
     
     addMsg(content, card);
@@ -188,7 +174,7 @@ export const SmartDiagnosisPage: React.FC = () => {
     setStep('governorate');
     const msg = `📋 تم اختيار ${sp.label}. يرجى اختيار المحافظة:`;
     if (isVoice) {
-      pushAi(msg, { kind: 'governorate' });
+      pendingCardRef.current = { kind: 'governorate' };
     } else {
       setTimeout(() => pushAiRef.current(msg, { kind: 'governorate' }), 200);
     }
@@ -212,9 +198,18 @@ export const SmartDiagnosisPage: React.FC = () => {
         .slice(0, 8);
       
       if (list.length > 0) {
-        pushAi(statusMsg, { kind: 'clinics', clinics: list });
+        if (isVoice) {
+          pendingCardRef.current = { kind: 'clinics', clinics: list };
+        } else {
+          pushAi(statusMsg, { kind: 'clinics', clinics: list });
+        }
       } else {
-        pushAi(`📍 محافظة ${gov}. عذراً، لا توجد عيادات مسجلة حالياً تطابق اختيارك في هذه المنطقة. هل تود اختيار محافظة أخرى؟`, { kind: 'governorate' });
+        const errorMsg = `📍 محافظة ${gov}. عذراً، لا توجد عيادات مسجلة حالياً تطابق اختيارك في هذه المنطقة. هل تود اختيار محافظة أخرى؟`;
+        if (isVoice) {
+          pendingCardRef.current = { kind: 'governorate' };
+        } else {
+          pushAi(errorMsg, { kind: 'governorate' });
+        }
       }
     };
 
@@ -231,7 +226,7 @@ export const SmartDiagnosisPage: React.FC = () => {
     
     const msg = `اختيار رائع! 👏\nالآن اختر اليوم المناسب لموعدك:`;
     if (isVoice) {
-      pushAi(msg, { kind: 'date' });
+      pendingCardRef.current = { kind: 'date' };
     } else {
       setTimeout(() => pushAiRef.current(msg, { kind: 'date' }), 200);
     }
@@ -244,7 +239,11 @@ export const SmartDiagnosisPage: React.FC = () => {
     
     const msg = 'اختر الوقت المفضل لك:';
     const execute = () => {
-      pushAi(msg, { kind: 'time' });
+      if (isVoice) {
+        pendingCardRef.current = { kind: 'time' };
+      } else {
+        pushAi(msg, { kind: 'time' });
+      }
       setStep('time');
     };
 
@@ -261,7 +260,11 @@ export const SmartDiagnosisPage: React.FC = () => {
     
     const msg = 'ممتاز! آخر خطوة — أدخل بياناتك لتأكيد الحجز:';
     const execute = () => {
-      pushAi(msg, { kind: 'patient' });
+      if (isVoice) {
+        pendingCardRef.current = { kind: 'patient' };
+      } else {
+        pushAi(msg, { kind: 'patient' });
+      }
       setStep('patient');
     };
 
@@ -485,12 +488,10 @@ export const SmartDiagnosisPage: React.FC = () => {
                 prompt: `أنت المساعد الصوتي الرسمي لمنصة حجز عيادات الأسنان في العراق. تتحدث بلغة عربية عراقية ودودة ومحترفة.
 مهمتك: مساعدة المريض في حجز موعد عبر الخطوات حصراً:
 1) اسأل عن الاختصاص → استخدم select_specialty.
-2) اسأل عن المحافظة → استخدم select_governorate. إذا ذكر المستخدم مدينة مثل (تكريت، الرمادي، الناصرية) استنتج المحافظة المقابلة واستخدم الأداة.
-3) عرض العيادات → استخدم show_clinics. **هام جداً**: ممنوع منعاً باتاً ذكر عيادات من خيالك. اقرأ أسماء العيادات التي تظهر لك في نتيجة الأداة فقط.
-4) عند اختيار عيادة → استخدم select_clinic بالاسم الموجود في القائمة حصراً.
-5) اسأل عن اليوم والوقت → pick_date و pick_time.
-6) خذ بيانات المريض → fill_patient_info ثم confirm_booking.
-تذكر: إذا لم تظهر عيادات في منطقة معينة، اعتذر واطلب منه تجربة محافظة أخرى.`
+2) انتظر رد المستخدم. إذا ذكر المحافظة (مثل صلاح الدين، تكريت) → استخدم select_governorate. 
+**قاعدة صارمة**: لا تخمن المحافظة أبداً. إذا لم يذكرها المستخدم، اسأله عنها بوضوح: "في أي محافظة أنت؟".
+3) عندما تجد عيادات (عبر select_governorate أو show_clinics)، قم بنطق أسمائها بوضوح للمستخدم واسأله أي واحدة يفضل.
+تذكر: التزم بالترتيب ولا تقفز عن أي خطوة، وكن ودوداً جداً.`
               }
             }
           }
@@ -542,7 +543,13 @@ export const SmartDiagnosisPage: React.FC = () => {
           } else if (msg.type === 'agent_response' || msg.type === 'agent_response_correction') {
             const text = msg.agent_response_event?.agent_response || msg.agent_response || '';
             if (text) {
-              pushAiRef.current(`🎙️ ${text}`);
+              const id = crypto.randomUUID();
+              const pending = pendingCardRef.current;
+              pendingCardRef.current = null; // Clear queue
+              
+              const cardData = pending ? { kind: pending.kind, clinics: pending.clinics } as CardKind : undefined;
+              
+              setMessages(prev => [...prev, { id, role: 'ai', content: `🎙️ ${text}`, card: cardData }]);
             }
           } else if (msg.type === 'user_transcript') {
             const text = msg.user_transcription_event?.user_transcript || '';
@@ -576,7 +583,9 @@ export const SmartDiagnosisPage: React.FC = () => {
               } else if (tool_name === 'select_governorate') {
                 const inputGov = (parameters.governorate_name || parameters.governorate || parameters.name || '').trim();
                 const g = GOVERNORATES.find(x => 
+                  inputGov === x ||
                   inputGov.includes(x) || x.includes(inputGov) || 
+                  (inputGov.includes('صلاح الدين') && x === 'صلاح الدين') ||
                   (inputGov.includes('تكريت') && x === 'صلاح الدين') ||
                   (inputGov.includes('الرمادي') && x === 'الأنبار') ||
                   (inputGov.includes('الحلة') && x === 'بابل') ||
@@ -589,26 +598,32 @@ export const SmartDiagnosisPage: React.FC = () => {
                 );
                 if (g) {
                   handleGovernorateRef.current(g, true);
-                  result = `Success: Selected governorate ${g}. UI step updated to clinics.`;
+                  // Get clinic names for this gov to give to AI
+                  const b = bookingRef.current;
+                  const list = clinicsRef.current
+                    .filter(c => (c.governorate || '').includes(g))
+                    .filter(c => !b.specialty || 
+                      c.specialties?.some(s => b.specialty!.keys.some(k => s.toLowerCase().includes(k.toLowerCase()))) || 
+                      c.services?.some(s => b.specialty!.keys.some(k => s.toLowerCase().includes(k.toLowerCase())))
+                    ).slice(0, 8);
+                  const names = list.map(c => c.name).join('، ');
+                  result = list.length > 0 
+                    ? `Success: Found ${list.length} clinics in ${g}: ${names}. Mention these clinics to the patient and ask which one they prefer.`
+                    : `Success: Selected ${g} but no clinics found matching the specialty. Ask the patient if they want to try another governorate.`;
                 } else {
-                  pushAiRef.current(`المحافظة "${inputGov}" غير متوفرة حالياً في القائمة، يرجى الاختيار من هذه المحافظات:`, { kind: 'governorate' });
+                  pushAiRef.current(`المحافظة "${inputGov}" غير متوفرة حالياً، يرجى الاختيار من هذه القائمة:`, { kind: 'governorate' });
                   result = 'Error: Governorate not matched';
                 }
               } else if (tool_name === 'show_clinics') {
                 setStep('clinics');
                 const list = filteredClinicsRef.current;
                 if (list.length > 0) {
-                  const namesList = list.slice(0, 3).map(c => c.name).join('، و');
-                  const msg = list.length === 1 
-                    ? `لقد وجدت لك عيادة ${list[0].name} في هذه المنطقة. هل تود الحجز فيها؟`
-                    : `لقد وجدت لك ${list.length} عيادات في هذه المنطقة، منها عيادة ${namesList}. أيهما تفضل؟`;
-                  
-                  pushAiRef.current(`🔄 ${msg}`, { kind: 'clinics', clinics: list });
-                  const names = list.map(c => c.name).join(', ');
-                  result = `Success: Showed ${list.length} clinics: [${names}]. STRICT INSTRUCTION: ONLY suggest clinics from this exact list. Do NOT mention any other clinic names even if you think you know them.`;
+                  const names = list.map(c => c.name).join('، ');
+                  pushAiRef.current(`إليك العيادات المتاحة: ${names}`, { kind: 'clinics', clinics: list });
+                  result = `Success: Showed ${list.length} clinics: ${names}. Introduce them to the patient and help them choose.`;
                 } else {
-                  pushAiRef.current('❌ عذراً، لم أجد عيادات تطابق بحثك في هذه المنطقة حالياً. يمكنك تجربة محافظة أخرى.', { kind: 'governorate' });
-                  result = 'Error: No clinics found for the current filters.';
+                  pushAiRef.current('❌ عذراً، لم أجد عيادات تطابق بحثك حالياً.', { kind: 'governorate' });
+                  result = 'Error: No clinics found matching search.';
                 }
               } else if (tool_name === 'select_clinic') {
                 const inputClinic = (parameters.clinic_name || parameters.clinic_id || parameters.name || '').toLowerCase().trim();
