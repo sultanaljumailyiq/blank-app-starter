@@ -166,34 +166,23 @@ export const SmartDiagnosisPage: React.FC = () => {
     if (!isVoice) pushUser(`أحتاج ${sp.label}`);
 
     setStep('governorate');
-    setTimeout(() => {
-      pushAiRef.current(`📋 تم اختيار ${sp.label}. يرجى اختيار المحافظة:`, { kind: 'governorate' });
-    }, 200);
+    pushAi(`📋 تم اختيار ${sp.label}. يرجى اختيار المحافظة:`, { kind: 'governorate' });
   };
 
   const handleGovernorate = (gov: string, isVoice = false) => {
     setBooking(prev => ({ ...prev, governorate: gov }));
     if (!isVoice) pushUser(`أنا في ${gov}`);
-
+    
     setStep('clinics');
-    setTimeout(() => {
-      const list = clinics
-        .filter(c => (c.governorate || '').includes(gov))
-        .filter(c => !booking.specialty || c.specialties?.some(s => booking.specialty!.keys.some(k => s.toLowerCase().includes(k.toLowerCase()))) || c.services?.some(s => booking.specialty!.keys.some(k => s.toLowerCase().includes(k.toLowerCase()))))
-        .slice(0, 8);
-
-      const statusMsg = `📍 محافظة ${gov}. إليك العيادات المتاحة:`;
-      pushAiRef.current(statusMsg, { kind: 'clinics', clinics: list.length > 0 ? list : clinics.slice(0, 6) });
-    }, 200);
+    const statusMsg = `📍 محافظة ${gov}. إليك العيادات المتاحة:`;
+    pushAi(statusMsg, { kind: 'clinics', clinics: clinics.filter(c => (c.governorate || '').includes(gov)).slice(0, 8) });
   };
 
   const handleClinic = (clinic: Clinic) => {
     setBooking(prev => ({ ...prev, clinic }));
     pushUser(`اخترت ${clinic.name}`);
-    setTimeout(() => {
-      pushAi(`اختيار رائع! 👏\nالآن اختر اليوم المناسب لموعدك:`, { kind: 'date' });
-      setStep('date');
-    }, 300);
+    pushAi(`اختيار رائع! 👏\nالآن اختر اليوم المناسب لموعدك:`, { kind: 'date' });
+    setStep('date');
   };
 
   const handleDate = (dateISO: string, label: string) => {
