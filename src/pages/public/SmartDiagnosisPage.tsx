@@ -88,6 +88,20 @@ export const SmartDiagnosisPage: React.FC = () => {
   const [booking, setBooking] = useState<BookingState>({
     patient: { name: '', phone: '', age: '', gender: '' }
   });
+
+  // Filter clinics by current selection
+  const filteredClinics = useMemo(() => {
+    let list = clinics;
+    if (booking.governorate) list = list.filter(c => (c.governorate || '').includes(booking.governorate!));
+    if (booking.specialty) {
+      const keys = booking.specialty.keys;
+      list = list.filter(c =>
+        c.specialties?.some(s => keys.some(k => s.toLowerCase().includes(k.toLowerCase()))) ||
+        c.services?.some(s => keys.some(k => s.toLowerCase().includes(k.toLowerCase())))
+      );
+    }
+    return list.slice(0, 8);
+  }, [clinics, booking.governorate, booking.specialty]);
   const [sessionId] = useState<string>(() => {
     let sid = localStorage.getItem('smart_diagnosis_session_id');
     if (!sid) { sid = crypto.randomUUID(); localStorage.setItem('smart_diagnosis_session_id', sid); }
@@ -100,11 +114,16 @@ export const SmartDiagnosisPage: React.FC = () => {
   const [isListening, setIsListening] = useState(false);
   const initialMessageSent = useRef(false);
 
-  // Refs to bookingState/clinics for ElevenLabs client tools (closures)
+  // Refs to bookingState/clinics/filtered for ElevenLabs client tools (closures)
   const bookingRef = useRef(booking);
   const clinicsRef = useRef(clinics);
-  useEffect(() => { bookingRef.current = booking; }, [booking]);
-  useEffect(() => { clinicsRef.current = clinics; }, [clinics]);
+  const filteredClinicsRef = useRef(filteredClinics);
+
+  useEffect(() => {
+    bookingRef.current = booking;
+    clinicsRef.current = clinics;
+    filteredClinicsRef.current = filteredClinics;
+  }, [booking, clinics, filteredClinics]);
 
   // Initial greeting + first card
   useEffect(() => {
@@ -146,27 +165,18 @@ export const SmartDiagnosisPage: React.FC = () => {
     pushUserRef.current = pushUser;
   }, [pushAi, pushUser]);
 
-  // Filter clinics by current selection
-  const filteredClinics = useMemo(() => {
-    let list = clinics;
-    if (booking.governorate) list = list.filter(c => (c.governorate || '').includes(booking.governorate!));
-    if (booking.specialty) {
-      const keys = booking.specialty.keys;
-      list = list.filter(c =>
-        c.specialties?.some(s => keys.some(k => s.toLowerCase().includes(k.toLowerCase()))) ||
-        c.services?.some(s => keys.some(k => s.toLowerCase().includes(k.toLowerCase())))
-      );
-    }
-    return list.slice(0, 8);
-  }, [clinics, booking.governorate, booking.specialty]);
-
   // ============== Step Handlers ==============
   const handleSpecialty = (sp: typeof SPECIALTIES[number], isVoice = false) => {
     setBooking(prev => ({ ...prev, specialty: sp }));
     if (!isVoice) pushUser(`أحتاج ${sp.label}`);
 
     setStep('governorate');
-    pushAi(`📋 تم اختيار ${sp.label}. يرجى اختيار المحافظة:`, { kind: 'governorate' });
+    const msg = `📋 تم اختيار ${sp.label}. يرجى اختيار المحافظة:`;
+    if (isVoice) {
+      pushAi(msg, { kind: 'governorate' });
+    } else {
+      setTimeout(() => pushAiRef.current(msg, { kind: 'governorate' }), 200);
+    }
   };
 
   const handleGovernorate = (gov: string, isVoice = false) => {
@@ -175,7 +185,23 @@ export const SmartDiagnosisPage: React.FC = () => {
     
     setStep('clinics');
     const statusMsg = `📍 محافظة ${gov}. إليك العيادات المتاحة:`;
-    pushAi(statusMsg, { kind: 'clinics', clinics: clinics.filter(c => (c.governorate || '').includes(gov)).slice(0, 8) });
+    
+    const execute = () => {
+      const list = clinics
+        .filter(c => (c.governorate || '').includes(gov))
+        .filter(c => !booking.specialty || 
+          c.specialties?.some(s => booking.specialty!.keys.some(k => s.toLowerCase().includes(k.toLowerCase()))) || 
+          c.services?.some(s => booking.specialty!.keys.some(k => s.toLowerCase().includes(k.toLowerCase())))
+        )
+        .slice(0, 8);
+      pushAi(statusMsg, { kind: 'clinics', clinics: list.length > 0 ? list : clinics.slice(0, 6) });
+    };
+
+    if (isVoice) {
+      execute();
+    } else {
+      setTimeout(execute, 200);
+    }
   };
 
   const handleClinic = (clinic: Clinic) => {
@@ -392,15 +418,15 @@ export const SmartDiagnosisPage: React.FC = () => {
               first_message: 'أهلاً بك في منصة طب الأسنان الذكية! أنا مساعدك الصوتي. ما الذي تحتاجه؟',
               language: 'ar',
               prompt: {
-                prompt: `أنت المساعد الصوتي الرسمي لمنصة طب الأسنان في العراق. تتحدث بلغة عربية عراقية ودودة ومحترفة باسم المنصة.
-مهمتك: مساعدة المريض في حجز موعد عبر:
-1) سؤاله عن المشكلة/الاختصاص (عام، تقويم، أطفال، جراحة، تجميل، طوارئ) → استخدم select_specialty
-2) سؤاله عن المحافظة → استخدم select_governorate
-3) عرض العيادات المسجلة → استخدم show_clinics ثم select_clinic عند اختياره
-4) سؤاله عن اليوم والوقت المناسب → pick_date و pick_time
-5) أخذ بياناته (الاسم، رقم الهاتف، العمر، الجنس) → fill_patient_info
-6) تأكيد الحجز → confirm_booking
-كن مختصراً ومتعاطفاً. لا تعطِ تشخيصاً طبياً نهائياً. اقترح دائماً عيادة من قاعدة بيانات المنصة.`
+                prompt: `أنت المساعد الصوتي الرسمي لمنصة طب الأسنان في العراق. تتحدث بلغة عربية عراقية ودودة ومحترفة.
+مهمتك: مساعدة المريض في حجز موعد عبر الخطوات حصراً:
+1) اسأل عن الاختصاص → استخدم select_specialty.
+2) اسأل عن المحافظة → استخدم select_governorate.
+3) عرض العيادات → استخدم show_clinics. **هام**: لا تقترح عيادات من عندك، انتظر الأسماء التي ستظهر في نتيجة الأداة.
+4) عند اختيار عيادة → استخدم select_clinic بالاسم الموجود في القائمة حصراً.
+5) اسأل عن اليوم والوقت → pick_date و pick_time.
+6) خذ بيانات المريض → fill_patient_info ثم confirm_booking.
+تذكر: اقترح فقط العيادات التي تظهر لك في أداة show_clinics.`
               }
             }
           }
@@ -502,21 +528,25 @@ export const SmartDiagnosisPage: React.FC = () => {
                 }
               } else if (tool_name === 'show_clinics') {
                 setStep('clinics');
-                pushAi('🔄 جاري عرض العيادات المتاحة في منطقتك...', { kind: 'clinics', clinics: clinicsRef.current });
-                result = `Success: ${clinicsRef.current.length} clinics shown in UI.`;
+                const list = filteredClinicsRef.current.length > 0 ? filteredClinicsRef.current : clinicsRef.current.slice(0, 5);
+                pushAi('🔄 جاري عرض العيادات المتاحة في منطقتك...', { kind: 'clinics', clinics: list });
+                const names = list.map(c => c.name).join(', ');
+                result = `Success: Showed ${list.length} clinics. Available clinics on screen are: [${names}]. Ask the user to choose one of these.`;
               } else if (tool_name === 'select_clinic') {
-                const inputClinic = (parameters.clinic_name || parameters.clinic_id || parameters.name || '').toLowerCase();
-                const c = clinicsRef.current.find(cl =>
-                  cl.name.toLowerCase().includes(inputClinic) ||
-                  inputClinic.includes(cl.name.toLowerCase()) ||
-                  cl.id === inputClinic
-                );
+                const inputClinic = (parameters.clinic_name || parameters.clinic_id || parameters.name || '').toLowerCase().trim();
+                const cleanInput = inputClinic.replace('عيادة ', '').replace('مركز ', '');
+                const c = clinicsRef.current.find(cl => {
+                  const cleanName = cl.name.toLowerCase().replace('عيادة ', '').replace('مركز ', '');
+                  return cl.name.toLowerCase().includes(inputClinic) || 
+                         inputClinic.includes(cl.name.toLowerCase()) ||
+                         cleanName.includes(cleanInput) ||
+                         cleanInput.includes(cleanName);
+                });
                 if (c) {
                   handleClinic(c);
-                  result = `Success: Selected clinic ${c.name}. UI step updated to date selection.`;
+                  result = `Success: Selected clinic ${c.name}. Proceeding to date selection.`;
                 } else {
-                  pushAi(`لم أجد عيادة باسم "${inputClinic}". يرجى الاختيار من القائمة:`, { kind: 'clinics', clinics: clinicsRef.current });
-                  result = 'Error: Clinic not found';
+                  result = `Error: Clinic "${inputClinic}" not found. Please choose from: ${filteredClinicsRef.current.map(x => x.name).join(', ')}`;
                 }
               } else if (tool_name === 'pick_date') {
                 const d = new Date(parameters.date);
