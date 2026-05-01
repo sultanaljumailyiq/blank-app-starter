@@ -26,9 +26,8 @@ const SPECIALTIES = [
 ];
 
 const GOVERNORATES = [
-  'بغداد', 'البصرة', 'نينوى', 'أربيل', 'النجف', 'كربلاء',
-  'بابل', 'كركوك', 'السليمانية', 'الأنبار', 'ذي قار', 'ديالى',
-  'واسط', 'صلاح الدين', 'القادسية', 'ميسان', 'المثنى', 'دهوك'
+  'بغداد', 'أربيل', 'البصرة', 'الموصل', 'النجف', 'كربلاء', 'صلاح الدين', 
+  'الأنبار', 'ذي قار', 'ميسان', 'كركوك', 'ديالى', 'بابل', 'واسط', 'المثنى', 'القادسية', 'دهوك', 'السليمانية'
 ];
 
 type Step = 'intro' | 'specialty' | 'governorate' | 'clinics' | 'date' | 'time' | 'patient' | 'confirmed';
@@ -123,11 +122,14 @@ export const SmartDiagnosisPage: React.FC = () => {
 
   const pushAi = (content: string, card?: CardKind) => {
     // نستخدم القيمة المباشرة لـ voiceModeRef لتجنب مشاكل Closure
+    // البطاقات يجب أن تظهر دائماً في الدردشة حتى في وضع الصوت
     if (voiceModeRef.current && !card) {
       setLastVoiceMsg(content.replace('🎙️ ', ''));
       return;
     }
+    
     setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', content, card }]);
+    
     if (voiceModeRef.current && content) {
       setLastVoiceMsg(content.replace('🎙️ ', ''));
     }
@@ -494,12 +496,19 @@ export const SmartDiagnosisPage: React.FC = () => {
                 }
               } else if (tool_name === 'select_governorate') {
                 const inputGov = (parameters.governorate_name || parameters.governorate || parameters.name || '').trim();
-                const g = GOVERNORATES.find(x => inputGov.includes(x) || x.includes(inputGov));
+                const g = GOVERNORATES.find(x => 
+                  inputGov.includes(x) || x.includes(inputGov) || 
+                  (inputGov.includes('تكريت') && x === 'صلاح الدين') ||
+                  (inputGov.includes('الرمادي') && x === 'الأنبار') ||
+                  (inputGov.includes('الحلة') && x === 'بابل') ||
+                  (inputGov.includes('العمارة') && x === 'ميسان') ||
+                  (inputGov.includes('الناصرية') && x === 'ذي قار')
+                );
                 if (g) {
                   handleGovernorate(g, true);
                   result = `Success: Selected governorate ${g}. UI step updated to clinics.`;
                 } else {
-                  pushAi(`المحافظة "${inputGov}" غير متوفرة حالياً، يرجى الاختيار من القائمة:`, { kind: 'governorate' });
+                  pushAi(`المحافظة "${inputGov}" غير متوفرة حالياً في القائمة، يرجى الاختيار من هذه المحافظات:`, { kind: 'governorate' });
                   result = 'Error: Governorate not matched';
                 }
               } else if (tool_name === 'show_clinics') {
