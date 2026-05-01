@@ -363,7 +363,7 @@ export const SmartDiagnosisPage: React.FC = () => {
         `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${ELEVENLABS_AGENT_ID}`
       );
       wsRef.current = ws;
-      audioCtxRef.current = new AudioContext({ sampleRate: 24000 });
+      audioCtxRef.current = new AudioContext({ sampleRate: 16000 }); // تطابق مع تردد ElevenLabs الافتراضي لمنع السرعة الزائدة
 
       ws.onopen = () => {
         console.log('[ElevenLabs WS] connected');
@@ -429,11 +429,9 @@ export const SmartDiagnosisPage: React.FC = () => {
           if (msg.type === 'audio') {
             const b64 = msg.audio_event?.audio_base_64 || msg.audio || '';
             if (b64) {
-              // Decode base64 → raw PCM16 Int16 LE buffer
               const bin = atob(b64);
               const bytes = new Uint8Array(bin.length);
               for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-              // Ensure even byte length (Int16 requires 2 bytes/sample)
               const aligned = bytes.length % 2 === 0 ? bytes.buffer : bytes.buffer.slice(0, bytes.length - 1);
               audioQueueRef.current.push(aligned);
               playNextChunk();
@@ -448,7 +446,6 @@ export const SmartDiagnosisPage: React.FC = () => {
             audioQueueRef.current = [];
             isPlayingRef.current = false;
           } else if (msg.type === 'client_tool_call') {
-            // Handle ElevenLabs Client Tools manually
             const toolCall = msg.client_tool_call;
             if (!toolCall) return;
             const { tool_name, tool_call_id, parameters } = toolCall;
@@ -456,26 +453,62 @@ export const SmartDiagnosisPage: React.FC = () => {
             
             try {
               if (tool_name === 'select_specialty') {
-                const sp = SPECIALTIES.find(s => s.keys.some(k => parameters.specialty?.toLowerCase().includes(k.toLowerCase())) || s.label.includes(parameters.specialty));
-                if (sp) { handleSpecialty(sp); result = `تم اختيار ${sp.label}`; }
-                else { pushAi(`الاختصاصات المتاحة:`, { kind: 'specialty' }); result = 'showed specialty cards'; }
+                const inputSpec = parameters.specialty?.toLowerCase() || '';
+                const sp = SPECIALTIES.find(s => 
+                  s.keys.some(k => inputSpec.includes(k.toLowerCase()) || k.toLowerCase().includes(inputSpec)) || 
+                  s.label.includes(inputSpec) || 
+                  inputSpec.includes(s.label)
+                );
+                if (sp) { 
+                  pushAi(`🔄 تم التعرف على الاختصاص: ${sp.label}`);
+                  handleSpecialty(sp); 
+                  result = `Success: Selected ${sp.label}`; 
+                } else { 
+                  pushAi(`لم أستطع مطابقة "${inputSpec}" مع الاختصاصات المتاحة.`, { kind: 'specialty' }); 
+                  result = 'Error: Specialty not matched'; 
+                }
               } else if (tool_name === 'select_governorate') {
-                const g = GOVERNORATES.find(x => parameters.governorate?.includes(x) || x.includes(parameters.governorate));
-                if (g) { handleGovernorate(g); result = `تم اختيار ${g}`; }
-                else { pushAi('اختر محافظتك:', { kind: 'governorate' }); result = 'showed governorate cards'; }
+                const inputGov = parameters.governorate?.trim() || '';
+                const g = GOVERNORATES.find(x => inputGov.includes(x) || x.includes(inputGov));
+                if (g) { 
+                  pushAi(`🔄 تم تحديد المحافظة: ${g}`);
+                  handleGovernorate(g); 
+                  result = `Success: Selected ${g}`; 
+                } else { 
+                  pushAi(`المحافظة "${inputGov}" غير موجودة، يرجى الاختيار من القائمة:`, { kind: 'governorate' }); 
+                  result = 'Error: Governorate not matched'; 
+                }
               } else if (tool_name === 'show_clinics') {
-                pushAi('إليك العيادات المقترحة:', { kind: 'clinics', clinics: clinicsRef.current });
-                result = `${clinicsRef.current.length} clinics shown`;
+                pushAi('🔄 جاري عرض العيادات المتاحة في منطقتك...', { kind: 'clinics', clinics: clinicsRef.current });
+                result = `Success: ${clinicsRef.current.length} clinics shown`;
               } else if (tool_name === 'select_clinic') {
-                const c = clinicsRef.current.find(cl => cl.name.includes(parameters.clinic_name) || parameters.clinic_name?.includes(cl.name));
-                if (c) { handleClinic(c); result = `selected ${c.name}`; }
-                else result = 'clinic not found';
+                const inputClinic = parameters.clinic_name?.toLowerCase() || '';
+                const c = clinicsRef.current.find(cl => 
+                  cl.name.toLowerCase().includes(inputClinic) || 
+                  inputClinic.includes(cl.name.toLowerCase())
+                );
+                if (c) { 
+                  pushAi(`🔄 تم اختيار عيادة: ${c.name}`);
+                  handleClinic(c); 
+                  result = `Success: Selected clinic ${c.name}`; 
+                } else {
+                  pushAi(`لم أجد عيادة باسم "${inputClinic}".`);
+                  result = 'Error: Clinic not found';
+                }
               } else if (tool_name === 'pick_date') {
                 const d = new Date(parameters.date);
-                if (isNaN(d.getTime())) { pushAi('اختر اليوم:', { kind: 'date' }); result = 'showed dates'; }
-                else { handleDate(d.toISOString(), d.toLocaleDateString('ar-IQ')); result = `picked ${parameters.date}`; }
+                if (isNaN(d.getTime())) { 
+                  pushAi('يرجى اختيار تاريخ صحيح:', { kind: 'date' }); 
+                  result = 'Error: Invalid date'; 
+                } else { 
+                  pushAi(`🔄 تم تحديد التاريخ: ${d.toLocaleDateString('ar-IQ')}`);
+                  handleDate(d.toISOString(), d.toLocaleDateString('ar-IQ')); 
+                  result = `Success: Date picked ${parameters.date}`; 
+                }
               } else if (tool_name === 'pick_time') {
-                handleTime(parameters.time); result = `picked ${parameters.time}`;
+                pushAi(`🔄 تم تحديد الوقت: ${parameters.time}`);
+                handleTime(parameters.time); 
+                result = `Success: Time picked ${parameters.time}`;
               } else if (tool_name === 'fill_patient_info') {
                 setBooking(prev => ({
                   ...prev,
@@ -486,23 +519,23 @@ export const SmartDiagnosisPage: React.FC = () => {
                     gender: (parameters.gender as any) || prev.patient.gender,
                   }
                 }));
-                result = 'patient info updated. check if name and phone are filled, if not, ask for them.';
+                result = 'Success: Patient info updated';
               } else if (tool_name === 'confirm_booking') {
                 const b = bookingRef.current;
                 if (!b.patient.name || !b.patient.phone) {
-                  result = 'Error: Missing patient name or phone. Please ask the user for their full name and phone number to complete the booking.';
+                  result = 'Error: Missing name or phone';
+                  pushAi('يرجى تزويدي باسمك الكامل ورقم هاتفك لإتمام الحجز.');
                 } else {
                   await handleConfirmBooking(); 
-                  result = 'booking confirmed successfully. tell the user the appointment is confirmed and the clinic will contact them.';
+                  result = 'Success: Booking confirmed';
                 }
               } else {
-                result = 'Unknown tool';
+                result = 'Error: Unknown tool';
               }
             } catch (err: any) {
               result = `Error: ${err.message}`;
             }
 
-            // Send tool result back to server
             ws.send(JSON.stringify({
               type: 'client_tool_result',
               tool_call_id,
@@ -511,6 +544,7 @@ export const SmartDiagnosisPage: React.FC = () => {
           }
         } catch (err) { console.warn('[ElevenLabs WS] parse error:', err); }
       };
+
 
       ws.onerror = (err) => {
         console.error('[ElevenLabs WS] error:', err);
