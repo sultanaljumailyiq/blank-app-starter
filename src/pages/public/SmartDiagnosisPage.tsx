@@ -157,13 +157,7 @@ export const SmartDiagnosisPage: React.FC = () => {
   const pushUser = (content: string, image?: string | null) =>
     setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'user', content, image }]);
 
-  // استخدام Refs للوظائف لضمان وصولها للـ WebSocket بأحدث نسخة
-  const pushAiRef = useRef(pushAi);
-  const pushUserRef = useRef(pushUser);
-  useEffect(() => {
-    pushAiRef.current = pushAi;
-    pushUserRef.current = pushUser;
-  }, [pushAi, pushUser]);
+
 
   // ============== Step Handlers ==============
   const handleSpecialty = (sp: typeof SPECIALTIES[number], isVoice = false) => {
@@ -263,6 +257,27 @@ export const SmartDiagnosisPage: React.FC = () => {
       setIsLoading(false);
     }
   };
+
+  // استخدام Refs للوظائف لضمان وصولها للـ WebSocket بأحدث نسخة
+  const pushAiRef = useRef(pushAi);
+  const pushUserRef = useRef(pushUser);
+  const handleSpecialtyRef = useRef(handleSpecialty);
+  const handleGovernorateRef = useRef(handleGovernorate);
+  const handleClinicRef = useRef(handleClinic);
+  const handleDateRef = useRef(handleDate);
+  const handleTimeRef = useRef(handleTime);
+  const handleConfirmBookingRef = useRef(handleConfirmBooking);
+
+  useEffect(() => {
+    pushAiRef.current = pushAi;
+    pushUserRef.current = pushUser;
+    handleSpecialtyRef.current = handleSpecialty;
+    handleGovernorateRef.current = handleGovernorate;
+    handleClinicRef.current = handleClinic;
+    handleDateRef.current = handleDate;
+    handleTimeRef.current = handleTime;
+    handleConfirmBookingRef.current = handleConfirmBooking;
+  }, [pushAi, pushUser, handleSpecialty, handleGovernorate, handleClinic, handleDate, handleTime, handleConfirmBooking]);
 
   // ============== Free Chat (text/image) ==============
   const handleSendMessage = async () => {
@@ -503,10 +518,10 @@ export const SmartDiagnosisPage: React.FC = () => {
                   inputSpec.includes(s.label)
                 );
                 if (sp) {
-                  handleSpecialty(sp, true);
+                  handleSpecialtyRef.current(sp, true);
                   result = `Success: Selected specialty ${sp.label}. UI step updated to governorate.`;
                 } else {
-                  pushAi(`لم أستطع مطابقة "${inputSpec}" مع الاختصاصات المتاحة. يرجى الاختيار من القائمة:`, { kind: 'specialty' });
+                  pushAiRef.current(`لم أستطع مطابقة "${inputSpec}" مع الاختصاصات المتاحة. يرجى الاختيار من القائمة:`, { kind: 'specialty' });
                   result = 'Error: Specialty not matched';
                 }
               } else if (tool_name === 'select_governorate') {
@@ -520,10 +535,10 @@ export const SmartDiagnosisPage: React.FC = () => {
                   (inputGov.includes('الناصرية') && x === 'ذي قار')
                 );
                 if (g) {
-                  handleGovernorate(g, true);
+                  handleGovernorateRef.current(g, true);
                   result = `Success: Selected governorate ${g}. UI step updated to clinics.`;
                 } else {
-                  pushAi(`المحافظة "${inputGov}" غير متوفرة حالياً في القائمة، يرجى الاختيار من هذه المحافظات:`, { kind: 'governorate' });
+                  pushAiRef.current(`المحافظة "${inputGov}" غير متوفرة حالياً في القائمة، يرجى الاختيار من هذه المحافظات:`, { kind: 'governorate' });
                   result = 'Error: Governorate not matched';
                 }
               } else if (tool_name === 'show_clinics') {
@@ -543,7 +558,7 @@ export const SmartDiagnosisPage: React.FC = () => {
                          cleanInput.includes(cleanName);
                 });
                 if (c) {
-                  handleClinic(c);
+                  handleClinicRef.current(c);
                   result = `Success: Selected clinic ${c.name}. Proceeding to date selection.`;
                 } else {
                   result = `Error: Clinic "${inputClinic}" not found. Please choose from: ${filteredClinicsRef.current.map(x => x.name).join(', ')}`;
@@ -551,16 +566,16 @@ export const SmartDiagnosisPage: React.FC = () => {
               } else if (tool_name === 'pick_date') {
                 const d = new Date(parameters.date);
                 if (isNaN(d.getTime())) {
-                  pushAi('يرجى اختيار تاريخ صحيح:', { kind: 'date' });
+                  pushAiRef.current('يرجى اختيار تاريخ صحيح:', { kind: 'date' });
                   result = 'Error: Invalid date';
                 } else {
-                  pushAi(`🔄 تم تحديد التاريخ: ${d.toLocaleDateString('ar-IQ')}`);
-                  handleDate(d.toISOString(), d.toLocaleDateString('ar-IQ'));
+                  pushAiRef.current(`🔄 تم تحديد التاريخ: ${d.toLocaleDateString('ar-IQ')}`);
+                  handleDateRef.current(d.toISOString(), d.toLocaleDateString('ar-IQ'));
                   result = `Success: Date picked ${parameters.date}`;
                 }
               } else if (tool_name === 'pick_time') {
-                pushAi(`🔄 تم تحديد الوقت: ${parameters.time}`);
-                handleTime(parameters.time);
+                pushAiRef.current(`🔄 تم تحديد الوقت: ${parameters.time}`);
+                handleTimeRef.current(parameters.time);
                 result = `Success: Time picked ${parameters.time}`;
               } else if (tool_name === 'fill_patient_info') {
                 setBooking(prev => ({
@@ -578,9 +593,9 @@ export const SmartDiagnosisPage: React.FC = () => {
                 const b = bookingRef.current;
                 if (!b.patient.name || !b.patient.phone) {
                   result = 'Error: Missing name or phone';
-                  pushAi('يرجى تزويدي باسمك الكامل ورقم هاتفك لإتمام الحجز.');
+                  pushAiRef.current('يرجى تزويدي باسمك الكامل ورقم هاتفك لإتمام الحجز.');
                 } else {
-                  await handleConfirmBooking();
+                  await handleConfirmBookingRef.current();
                   result = 'Success: Booking confirmed';
                 }
               } else {
