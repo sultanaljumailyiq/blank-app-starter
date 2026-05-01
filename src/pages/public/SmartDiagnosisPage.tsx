@@ -229,6 +229,18 @@ export const SmartDiagnosisPage: React.FC = () => {
     if ((!input.trim() && !imagePreview) || isLoading) return;
     const userText = input;
     const img = imagePreview;
+    
+    // 1. إذا كان المساعد الصوتي فعالاً، نرسل النص لخادم ElevenLabs مباشرة
+    if (voiceMode && wsRef.current?.readyState === WebSocket.OPEN) {
+      pushUser(userText);
+      setInput('');
+      setImagePreview(null);
+      // إرسال النص كرسالة مقاطعة/تفاعل مع المساعد الصوتي بدلاً من المساعد الذكي
+      wsRef.current.send(JSON.stringify({ type: 'user_message', text: userText }));
+      return;
+    }
+
+    // 2. إذا لم يكن المساعد الصوتي فعالاً، نرسله لمساعد الذكاء الاصطناعي (LLM) كالمعتاد
     pushUser(userText, img);
     setInput(''); setImagePreview(null);
     setIsLoading(true);
@@ -341,9 +353,15 @@ export const SmartDiagnosisPage: React.FC = () => {
               first_message: 'أهلاً بك في منصة طب الأسنان الذكية! أنا مساعدك الصوتي. ما الذي تحتاجه؟',
               language: 'ar',
               prompt: {
-                prompt: `أنت المساعد الصوتي لمنصة طب الأسنان في العراق. تتحدث بعربية عراقية ودودة.
-مهمتك: مساعدة المريض في حجز موعد بالخطوات: 1) نوع العلاج 2) المحافظة 3) اليوم والوقت 4) الاسم ورقم الهاتف.
-كن مختصراً ومتعاطفاً ولا تعطِ تشخيصاً طبياً نهائياً.`
+                prompt: `أنت المساعد الصوتي الرسمي لمنصة طب الأسنان في العراق. تتحدث بلغة عربية عراقية ودودة ومحترفة باسم المنصة.
+مهمتك: مساعدة المريض في حجز موعد عبر:
+1) سؤاله عن المشكلة/الاختصاص (عام، تقويم، أطفال، جراحة، تجميل، طوارئ) → استخدم select_specialty
+2) سؤاله عن المحافظة → استخدم select_governorate
+3) عرض العيادات المسجلة → استخدم show_clinics ثم select_clinic عند اختياره
+4) سؤاله عن اليوم والوقت المناسب → pick_date و pick_time
+5) أخذ بياناته (الاسم، رقم الهاتف، العمر، الجنس) → fill_patient_info
+6) تأكيد الحجز → confirm_booking
+كن مختصراً ومتعاطفاً. لا تعطِ تشخيصاً طبياً نهائياً. اقترح دائماً عيادة من قاعدة بيانات المنصة.`
               }
             }
           }
@@ -805,43 +823,52 @@ export const SmartDiagnosisPage: React.FC = () => {
           )}
 
           {/* Input */}
-          {!voiceMode && (
-            <div className="border-t border-gray-100 p-3 bg-white relative z-20">
-              {imagePreview && (
-                <div className="flex items-center gap-2 mb-2 p-2 bg-blue-50 rounded-lg w-fit border border-blue-100">
-                  <img src={imagePreview} alt="" className="w-10 h-10 object-cover rounded" />
-                  <button onClick={() => setImagePreview(null)} className="text-red-500 p-1 hover:bg-red-50 rounded-full" aria-label="إغلاق معاينة الصورة">
-                    <X className="w-4 h-4" />
+          <div className="border-t border-gray-100 p-3 bg-white relative z-20">
+            {imagePreview && (
+              <div className="flex items-center gap-2 mb-2 p-2 bg-blue-50 rounded-lg w-fit border border-blue-100">
+                <img src={imagePreview} alt="" className="w-10 h-10 object-cover rounded" />
+                <button onClick={() => setImagePreview(null)} className="text-red-500 p-1 hover:bg-red-50 rounded-full" aria-label="إغلاق معاينة الصورة">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+            <div className={`flex items-center gap-1.5 rounded-2xl p-1.5 focus-within:border-blue-400 focus-within:ring-4 transition-all ${voiceMode ? 'bg-indigo-50 border-indigo-200 focus-within:ring-indigo-100' : 'bg-gray-50 border-gray-200 focus-within:ring-blue-50'}`}>
+              <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" aria-label="رفع صورة" />
+              <button onClick={() => fileInputRef.current?.click()} className="p-2 hover:bg-white rounded-xl text-gray-500 hover:text-blue-600 transition-colors" aria-label="إرفاق صورة">
+                <ImageIcon className="w-5 h-5" />
+              </button>
+              <button onClick={toggleListening} className={`p-2 rounded-xl transition-colors ${isListening ? 'bg-red-100 text-red-600 animate-pulse' : 'hover:bg-white text-gray-500 hover:text-blue-600'}`} aria-label={isListening ? 'إيقاف التسجيل' : 'بدء التسجيل الصوتي'}>
+                <Mic className="w-5 h-5" />
+              </button>
+              <input
+                type="text"
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
+                placeholder={voiceMode ? "اكتب ليتم إرساله للمساعد الصوتي…" : "اكتب أي سؤال أو استفسار…"}
+                className="flex-1 bg-transparent outline-none text-sm px-2 text-right placeholder-gray-400"
+              />
+              <div className="flex items-center gap-1">
+                {voiceMode && (
+                  <button
+                    onClick={stopVoiceMode}
+                    className="bg-red-100 hover:bg-red-200 text-red-600 p-2 rounded-xl transition-all"
+                    aria-label="إنهاء الاتصال"
+                  >
+                    <PhoneOff className="w-5 h-5" />
                   </button>
-                </div>
-              )}
-              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-2xl p-1.5 focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-50 transition-all">
-                <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" aria-label="رفع صورة" />
-                <button onClick={() => fileInputRef.current?.click()} className="p-2 hover:bg-white rounded-xl text-gray-500 hover:text-blue-600 transition-colors" aria-label="إرفاق صورة">
-                  <ImageIcon className="w-5 h-5" />
-                </button>
-                <button onClick={toggleListening} className={`p-2 rounded-xl transition-colors ${isListening ? 'bg-red-100 text-red-600 animate-pulse' : 'hover:bg-white text-gray-500 hover:text-blue-600'}`} aria-label={isListening ? 'إيقاف التسجيل' : 'بدء التسجيل الصوتي'}>
-                  <Mic className="w-5 h-5" />
-                </button>
-                <input
-                  type="text"
-                  value={input}
-                  onChange={e => setInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
-                  placeholder="اكتب أي سؤال أو استفسار…"
-                  className="flex-1 bg-transparent outline-none text-sm px-2 text-right"
-                />
+                )}
                 <button
                   onClick={handleSendMessage}
                   disabled={(!input.trim() && !imagePreview) || isLoading}
-                  className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white p-2 rounded-xl disabled:opacity-40 transition-all"
+                  className={`text-white p-2 rounded-xl disabled:opacity-40 transition-all ${voiceMode ? 'bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700' : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'}`}
                   aria-label="إرسال الرسالة"
                 >
                   <Send className="w-5 h-5" />
                 </button>
               </div>
             </div>
-          )}
+          </div>
 
           {voiceMode && (
             <div className="border-t border-gray-100 p-6 bg-gradient-to-b from-white to-blue-50/50 text-center relative z-20 shadow-[0_-10px_20px_rgba(0,0,0,0.02)]">
