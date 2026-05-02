@@ -166,7 +166,21 @@ export const SmartDiagnosisPage: React.FC = () => {
     if (!isVoice) pushUser(`أحتاج ${sp.label}`);
 
     setStep('governorate');
-    pushAi(`📋 تم اختيار ${sp.label}. يرجى اختيار المحافظة:`, { kind: 'governorate' });
+    // For manual clicks, immediately show the governorate card.
+    // For voice, the agent must explicitly call `show_governorate` to render the card.
+    if (!isVoice) {
+      pushAi(`📋 تم اختيار ${sp.label}. يرجى اختيار المحافظة:`, { kind: 'governorate' });
+    }
+  };
+
+  // Show the governorate selection card (used by voice agent via show_governorate tool)
+  const showGovernorateCard = (specialtyLabel?: string) => {
+    setStep('governorate');
+    const label = specialtyLabel || booking.specialty?.label;
+    const msg = label
+      ? `📋 اختصاص ${label} — يرجى اختيار المحافظة من البطاقة:`
+      : 'يرجى اختيار المحافظة من البطاقة:';
+    pushAi(msg, { kind: 'governorate' });
   };
 
   const handleGovernorate = (gov: string, isVoice = false) => {
