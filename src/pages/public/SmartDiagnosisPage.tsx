@@ -138,13 +138,20 @@ export const SmartDiagnosisPage: React.FC = () => {
   const pushUser = (content: string, image?: string | null) =>
     setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'user', content, image }]);
 
-  // استخدام Refs للوظائف لضمان وصولها للـ WebSocket بأحدث نسخة
+  // استخدام Refs للوظائف لضمان وصولها للـ WebSocket بأحدث نسخة (تجنباً لمشاكل Stale Closure)
   const pushAiRef = useRef(pushAi);
   const pushUserRef = useRef(pushUser);
+  const handleSpecialtyRef = useRef<(sp: typeof SPECIALTIES[number], isVoice?: boolean) => void>(() => {});
+  const handleGovernorateRef = useRef<(gov: string, isVoice?: boolean) => void>(() => {});
+  const handleClinicRef = useRef<(c: Clinic) => void>(() => {});
+  const handleDateRef = useRef<(iso: string, label: string) => void>(() => {});
+  const handleTimeRef = useRef<(t: string) => void>(() => {});
+  const handleConfirmBookingRef = useRef<() => Promise<void>>(async () => {});
+  const showGovernorateCardRef = useRef<(label?: string) => void>(() => {});
   useEffect(() => {
     pushAiRef.current = pushAi;
     pushUserRef.current = pushUser;
-  }, [pushAi, pushUser]);
+  });
 
   // Filter clinics by current selection
   const filteredClinics = useMemo(() => {
