@@ -498,6 +498,10 @@ export const SmartDiagnosisPage: React.FC = () => {
                   pushAi(`لم أستطع مطابقة "${inputSpec}" مع الاختصاصات المتاحة. يرجى الاختيار من القائمة:`, { kind: 'specialty' });
                   result = 'Error: Specialty not matched';
                 }
+              } else if (tool_name === 'show_governorate') {
+                // Render the governorate selection card in the UI
+                showGovernorateCard(bookingRef.current.specialty?.label);
+                result = 'Success: Governorate selection card is now displayed in the UI. Ask the patient verbally which governorate they live in, then call select_governorate.';
               } else if (tool_name === 'select_governorate') {
                 const inputGov = (parameters.governorate_name || parameters.governorate || parameters.name || '').trim();
                 const g = GOVERNORATES.find(x => 
@@ -512,8 +516,10 @@ export const SmartDiagnosisPage: React.FC = () => {
                   handleGovernorate(g, true);
                   result = `Success: Selected governorate ${g}. UI step updated to clinics.`;
                 } else {
+                  // Defensive: ensure card is visible so user can pick manually
+                  showGovernorateCard(bookingRef.current.specialty?.label);
                   pushAi(`المحافظة "${inputGov}" غير متوفرة حالياً في القائمة، يرجى الاختيار من هذه المحافظات:`, { kind: 'governorate' });
-                  result = 'Error: Governorate not matched';
+                  result = 'Error: Governorate not matched. Governorate card re-displayed for manual selection.';
                 }
               } else if (tool_name === 'show_clinics') {
                 setStep('clinics');
