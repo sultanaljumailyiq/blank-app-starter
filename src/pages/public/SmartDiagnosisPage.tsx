@@ -276,7 +276,18 @@ export const SmartDiagnosisPage: React.FC = () => {
     }
   };
 
-  // ============== Free Chat (text/image) ==============
+  // تحديث جميع Refs الخاصة بالـ handlers في كل render لضمان عدم وجود Stale Closures داخل WebSocket
+  useEffect(() => {
+    handleSpecialtyRef.current = handleSpecialty;
+    handleGovernorateRef.current = handleGovernorate;
+    handleClinicRef.current = handleClinic;
+    handleDateRef.current = handleDate;
+    handleTimeRef.current = handleTime;
+    handleConfirmBookingRef.current = handleConfirmBooking;
+    showGovernorateCardRef.current = showGovernorateCard;
+  });
+
+
   const handleSendMessage = async () => {
     if ((!input.trim() && !imagePreview) || isLoading) return;
     const userText = input;
