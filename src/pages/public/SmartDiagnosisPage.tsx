@@ -166,7 +166,21 @@ export const SmartDiagnosisPage: React.FC = () => {
     if (!isVoice) pushUser(`أحتاج ${sp.label}`);
 
     setStep('governorate');
-    pushAi(`📋 تم اختيار ${sp.label}. يرجى اختيار المحافظة:`, { kind: 'governorate' });
+    // For manual clicks, immediately show the governorate card.
+    // For voice, the agent must explicitly call `show_governorate` to render the card.
+    if (!isVoice) {
+      pushAi(`📋 تم اختيار ${sp.label}. يرجى اختيار المحافظة:`, { kind: 'governorate' });
+    }
+  };
+
+  // Show the governorate selection card (used by voice agent via show_governorate tool)
+  const showGovernorateCard = (specialtyLabel?: string) => {
+    setStep('governorate');
+    const label = specialtyLabel || booking.specialty?.label;
+    const msg = label
+      ? `📋 اختصاص ${label} — يرجى اختيار المحافظة من البطاقة:`
+      : 'يرجى اختيار المحافظة من البطاقة:';
+    pushAi(msg, { kind: 'governorate' });
   };
 
   const handleGovernorate = (gov: string, isVoice = false) => {
@@ -393,14 +407,15 @@ export const SmartDiagnosisPage: React.FC = () => {
               language: 'ar',
               prompt: {
                 prompt: `أنت المساعد الصوتي الرسمي لمنصة طب الأسنان في العراق. تتحدث بلغة عربية عراقية ودودة ومحترفة باسم المنصة.
-مهمتك: مساعدة المريض في حجز موعد عبر:
-1) سؤاله عن المشكلة/الاختصاص (عام، تقويم، أطفال، جراحة، تجميل، طوارئ) → استخدم select_specialty
-2) سؤاله عن المحافظة → استخدم select_governorate
-3) عرض العيادات المسجلة → استخدم show_clinics ثم select_clinic عند اختياره
-4) سؤاله عن اليوم والوقت المناسب → pick_date و pick_time
-5) أخذ بياناته (الاسم، رقم الهاتف، العمر، الجنس) → fill_patient_info
-6) تأكيد الحجز → confirm_booking
-كن مختصراً ومتعاطفاً. لا تعطِ تشخيصاً طبياً نهائياً. اقترح دائماً عيادة من قاعدة بيانات المنصة.`
+مهمتك: مساعدة المريض في حجز موعد عبر هذا التسلسل الإلزامي للأدوات:
+1) عند معرفة الاختصاص → استدعِ select_specialty
+2) فوراً بعدها وقبل أي شيء آخر → استدعِ show_governorate لإظهار بطاقة اختيار المحافظة في الواجهة، ثم اسأل المريض شفهياً عن محافظته.
+3) عند معرفة المحافظة → استدعِ select_governorate
+4) بعد ذلك → استدعِ show_clinics لعرض العيادات، ثم select_clinic عند اختياره.
+5) سؤاله عن اليوم والوقت → pick_date و pick_time
+6) أخذ بياناته (الاسم، رقم الهاتف، العمر، الجنس) → fill_patient_info
+7) تأكيد الحجز → confirm_booking
+قاعدة صارمة: لا تستدعِ select_governorate أبداً قبل أن تستدعي show_governorate أولاً. كن مختصراً ومتعاطفاً. لا تعطِ تشخيصاً طبياً نهائياً.`
               }
             }
           }
@@ -478,11 +493,15 @@ export const SmartDiagnosisPage: React.FC = () => {
                 );
                 if (sp) {
                   handleSpecialty(sp, true);
-                  result = `Success: Selected specialty ${sp.label}. UI step updated to governorate.`;
+                  result = `Success: Selected specialty ${sp.label}. NEXT REQUIRED ACTION: immediately call the tool "show_governorate" to display the governorate selection card in the UI before asking the patient about their location.`;
                 } else {
                   pushAi(`لم أستطع مطابقة "${inputSpec}" مع الاختصاصات المتاحة. يرجى الاختيار من القائمة:`, { kind: 'specialty' });
                   result = 'Error: Specialty not matched';
                 }
+              } else if (tool_name === 'show_governorate') {
+                // Render the governorate selection card in the UI
+                showGovernorateCard(bookingRef.current.specialty?.label);
+                result = 'Success: Governorate selection card is now displayed in the UI. Ask the patient verbally which governorate they live in, then call select_governorate.';
               } else if (tool_name === 'select_governorate') {
                 const inputGov = (parameters.governorate_name || parameters.governorate || parameters.name || '').trim();
                 const g = GOVERNORATES.find(x => 
@@ -497,8 +516,10 @@ export const SmartDiagnosisPage: React.FC = () => {
                   handleGovernorate(g, true);
                   result = `Success: Selected governorate ${g}. UI step updated to clinics.`;
                 } else {
+                  // Defensive: ensure card is visible so user can pick manually
+                  showGovernorateCard(bookingRef.current.specialty?.label);
                   pushAi(`المحافظة "${inputGov}" غير متوفرة حالياً في القائمة، يرجى الاختيار من هذه المحافظات:`, { kind: 'governorate' });
-                  result = 'Error: Governorate not matched';
+                  result = 'Error: Governorate not matched. Governorate card re-displayed for manual selection.';
                 }
               } else if (tool_name === 'show_clinics') {
                 setStep('clinics');
