@@ -138,13 +138,20 @@ export const SmartDiagnosisPage: React.FC = () => {
   const pushUser = (content: string, image?: string | null) =>
     setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'user', content, image }]);
 
-  // استخدام Refs للوظائف لضمان وصولها للـ WebSocket بأحدث نسخة
+  // استخدام Refs للوظائف لضمان وصولها للـ WebSocket بأحدث نسخة (تجنباً لمشاكل Stale Closure)
   const pushAiRef = useRef(pushAi);
   const pushUserRef = useRef(pushUser);
+  const handleSpecialtyRef = useRef<(sp: typeof SPECIALTIES[number], isVoice?: boolean) => void>(() => {});
+  const handleGovernorateRef = useRef<(gov: string, isVoice?: boolean) => void>(() => {});
+  const handleClinicRef = useRef<(c: Clinic) => void>(() => {});
+  const handleDateRef = useRef<(iso: string, label: string) => void>(() => {});
+  const handleTimeRef = useRef<(t: string) => void>(() => {});
+  const handleConfirmBookingRef = useRef<() => Promise<void>>(async () => {});
+  const showGovernorateCardRef = useRef<(label?: string) => void>(() => {});
   useEffect(() => {
     pushAiRef.current = pushAi;
     pushUserRef.current = pushUser;
-  }, [pushAi, pushUser]);
+  });
 
   // Filter clinics by current selection
   const filteredClinics = useMemo(() => {
@@ -188,8 +195,25 @@ export const SmartDiagnosisPage: React.FC = () => {
     if (!isVoice) pushUser(`أنا في ${gov}`);
     
     setStep('clinics');
-    const statusMsg = `📍 محافظة ${gov}. إليك العيادات المتاحة:`;
-    pushAi(statusMsg, { kind: 'clinics', clinics: clinics.filter(c => (c.governorate || '').includes(gov)).slice(0, 8) });
+    // استخدم clinicsRef.current لضمان أحدث بيانات (يتجنّب Stale Closure داخل WS)
+    const allClinics = clinicsRef.current;
+    const sp = bookingRef.current.specialty;
+    let filtered = allClinics.filter(c => (c.governorate || '').includes(gov));
+    if (sp) {
+      const keys = sp.keys;
+      const matchSpec = filtered.filter(c =>
+        c.specialties?.some(s => keys.some(k => s.toLowerCase().includes(k.toLowerCase()))) ||
+        c.services?.some(s => keys.some(k => s.toLowerCase().includes(k.toLowerCase())))
+      );
+      // إذا لم تتطابق أي عيادة مع الاختصاص، نُظهر كل عيادات المحافظة بدلاً من قائمة فارغة
+      if (matchSpec.length > 0) filtered = matchSpec;
+    }
+    const list = filtered.slice(0, 8);
+    const statusMsg = list.length > 0
+      ? `📍 محافظة ${gov} — وجدت ${list.length} عيادة${sp ? ` متخصصة في ${sp.label}` : ''}:`
+      : `📍 محافظة ${gov} — لا توجد عيادات مسجّلة حالياً في هذه المحافظة. جاري عرض العيادات المتاحة:`;
+    const finalList = list.length > 0 ? list : allClinics.slice(0, 8);
+    pushAi(statusMsg, { kind: 'clinics', clinics: finalList });
   };
 
   const handleClinic = (clinic: Clinic) => {
@@ -252,7 +276,18 @@ export const SmartDiagnosisPage: React.FC = () => {
     }
   };
 
-  // ============== Free Chat (text/image) ==============
+  // تحديث جميع Refs الخاصة بالـ handlers في كل render لضمان عدم وجود Stale Closures داخل WebSocket
+  useEffect(() => {
+    handleSpecialtyRef.current = handleSpecialty;
+    handleGovernorateRef.current = handleGovernorate;
+    handleClinicRef.current = handleClinic;
+    handleDateRef.current = handleDate;
+    handleTimeRef.current = handleTime;
+    handleConfirmBookingRef.current = handleConfirmBooking;
+    showGovernorateCardRef.current = showGovernorateCard;
+  });
+
+
   const handleSendMessage = async () => {
     if ((!input.trim() && !imagePreview) || isLoading) return;
     const userText = input;
@@ -478,81 +513,105 @@ export const SmartDiagnosisPage: React.FC = () => {
           } else if (msg.type === 'client_tool_call') {
             const toolCall = msg.client_tool_call;
             if (!toolCall) return;
-            const { tool_name, tool_call_id, parameters } = toolCall;
+            const { tool_name, tool_call_id, parameters = {} } = toolCall;
             console.log(`[ElevenLabs Tool] Calling ${tool_name}`, parameters);
             let result = '';
+            let isError = false;
 
             try {
               if (tool_name === 'select_specialty') {
-                const inputSpec = (parameters.specialty_id || parameters.specialty || parameters.name || '').toLowerCase();
+                const inputSpec = String(parameters.specialty_id || parameters.specialty || parameters.name || '').toLowerCase().trim();
                 const sp = SPECIALTIES.find(s =>
                   s.id === inputSpec ||
                   s.keys.some(k => inputSpec.includes(k.toLowerCase()) || k.toLowerCase().includes(inputSpec)) ||
                   s.label.includes(inputSpec) ||
-                  inputSpec.includes(s.label)
+                  (inputSpec && inputSpec.includes(s.label))
                 );
                 if (sp) {
-                  handleSpecialty(sp, true);
-                  result = `Success: Selected specialty ${sp.label}. NEXT REQUIRED ACTION: immediately call the tool "show_governorate" to display the governorate selection card in the UI before asking the patient about their location.`;
+                  handleSpecialtyRef.current(sp, true);
+                  // عرض بطاقة المحافظة فوراً كاحتياط — حتى لو لم يستدعِ الـ agent show_governorate
+                  setTimeout(() => showGovernorateCardRef.current(sp.label), 200);
+                  result = `Success: Selected specialty "${sp.label}". The governorate selection card has been displayed in the UI. Now ask the patient verbally which governorate (محافظة) they live in, then call select_governorate with the governorate name.`;
                 } else {
-                  pushAi(`لم أستطع مطابقة "${inputSpec}" مع الاختصاصات المتاحة. يرجى الاختيار من القائمة:`, { kind: 'specialty' });
-                  result = 'Error: Specialty not matched';
+                  pushAiRef.current(`لم أستطع مطابقة "${inputSpec}" مع الاختصاصات المتاحة. يرجى الاختيار من القائمة:`, { kind: 'specialty' });
+                  result = `Error: Could not match "${inputSpec}" to any specialty. Available specialties: ${SPECIALTIES.map(s => s.label).join(', ')}`;
+                  isError = true;
                 }
               } else if (tool_name === 'show_governorate') {
-                // Render the governorate selection card in the UI
-                showGovernorateCard(bookingRef.current.specialty?.label);
-                result = 'Success: Governorate selection card is now displayed in the UI. Ask the patient verbally which governorate they live in, then call select_governorate.';
+                showGovernorateCardRef.current(bookingRef.current.specialty?.label);
+                result = `Success: Governorate selection card is now displayed. Available governorates: ${GOVERNORATES.join(', ')}. Ask the patient which governorate they live in, then call select_governorate.`;
               } else if (tool_name === 'select_governorate') {
-                const inputGov = (parameters.governorate_name || parameters.governorate || parameters.name || '').trim();
-                const g = GOVERNORATES.find(x => 
-                  inputGov.includes(x) || x.includes(inputGov) || 
+                const inputGov = String(parameters.governorate_name || parameters.governorate || parameters.name || '').trim();
+                const g = GOVERNORATES.find(x =>
+                  inputGov.includes(x) || x.includes(inputGov) ||
                   (inputGov.includes('تكريت') && x === 'صلاح الدين') ||
                   (inputGov.includes('الرمادي') && x === 'الأنبار') ||
                   (inputGov.includes('الحلة') && x === 'بابل') ||
                   (inputGov.includes('العمارة') && x === 'ميسان') ||
-                  (inputGov.includes('الناصرية') && x === 'ذي قار')
+                  (inputGov.includes('الناصرية') && x === 'ذي قار') ||
+                  (inputGov.includes('الديوانية') && x === 'القادسية')
                 );
                 if (g) {
-                  handleGovernorate(g, true);
-                  result = `Success: Selected governorate ${g}. UI step updated to clinics.`;
+                  handleGovernorateRef.current(g, true);
+                  // عدّ العيادات المتاحة في المحافظة لإبلاغ الـ agent
+                  const cnt = clinicsRef.current.filter(c => (c.governorate || '').includes(g)).length;
+                  result = `Success: Selected governorate "${g}". Found ${cnt} clinic(s) in this governorate. The clinics card is now displayed in the UI. Ask the patient to choose a clinic, then call select_clinic with the clinic name.`;
                 } else {
-                  // Defensive: ensure card is visible so user can pick manually
-                  showGovernorateCard(bookingRef.current.specialty?.label);
-                  pushAi(`المحافظة "${inputGov}" غير متوفرة حالياً في القائمة، يرجى الاختيار من هذه المحافظات:`, { kind: 'governorate' });
-                  result = 'Error: Governorate not matched. Governorate card re-displayed for manual selection.';
+                  showGovernorateCardRef.current(bookingRef.current.specialty?.label);
+                  result = `Error: Could not match "${inputGov}" to any governorate. Available governorates: ${GOVERNORATES.join(', ')}. The governorate card is re-displayed for manual selection.`;
+                  isError = true;
                 }
               } else if (tool_name === 'show_clinics') {
+                // فلترة العيادات حسب المحافظة المختارة (إن وُجدت) قبل العرض
                 setStep('clinics');
-                pushAi('🔄 جاري عرض العيادات المتاحة في منطقتك...', { kind: 'clinics', clinics: clinicsRef.current });
-                result = `Success: ${clinicsRef.current.length} clinics shown in UI.`;
+                const gov = bookingRef.current.governorate;
+                const sp = bookingRef.current.specialty;
+                let list = clinicsRef.current;
+                if (gov) list = list.filter(c => (c.governorate || '').includes(gov));
+                if (sp) {
+                  const keys = sp.keys;
+                  const matched = list.filter(c =>
+                    c.specialties?.some(s => keys.some(k => s.toLowerCase().includes(k.toLowerCase()))) ||
+                    c.services?.some(s => keys.some(k => s.toLowerCase().includes(k.toLowerCase())))
+                  );
+                  if (matched.length > 0) list = matched;
+                }
+                const finalList = list.slice(0, 8);
+                pushAiRef.current(
+                  finalList.length > 0
+                    ? `🔄 العيادات المتاحة${gov ? ` في ${gov}` : ''}:`
+                    : `لا توجد عيادات مطابقة${gov ? ` في ${gov}` : ''} حالياً.`,
+                  { kind: 'clinics', clinics: finalList }
+                );
+                result = `Success: Displayed ${finalList.length} clinic(s)${gov ? ` in ${gov}` : ''}.`;
               } else if (tool_name === 'select_clinic') {
-                const inputClinic = (parameters.clinic_name || parameters.clinic_id || parameters.name || '').toLowerCase();
+                const inputClinic = String(parameters.clinic_name || parameters.clinic_id || parameters.name || '').toLowerCase().trim();
                 const c = clinicsRef.current.find(cl =>
                   cl.name.toLowerCase().includes(inputClinic) ||
-                  inputClinic.includes(cl.name.toLowerCase()) ||
+                  (inputClinic && inputClinic.includes(cl.name.toLowerCase())) ||
                   cl.id === inputClinic
                 );
                 if (c) {
-                  handleClinic(c);
-                  result = `Success: Selected clinic ${c.name}. UI step updated to date selection.`;
+                  handleClinicRef.current(c);
+                  result = `Success: Selected clinic "${c.name}". The date picker is now displayed. Ask the patient which day they prefer, then call pick_date.`;
                 } else {
-                  pushAi(`لم أجد عيادة باسم "${inputClinic}". يرجى الاختيار من القائمة:`, { kind: 'clinics', clinics: clinicsRef.current });
-                  result = 'Error: Clinic not found';
+                  pushAiRef.current(`لم أجد عيادة باسم "${inputClinic}". يرجى الاختيار من القائمة:`, { kind: 'clinics', clinics: clinicsRef.current.slice(0, 8) });
+                  result = `Error: No clinic matched "${inputClinic}".`;
+                  isError = true;
                 }
               } else if (tool_name === 'pick_date') {
                 const d = new Date(parameters.date);
                 if (isNaN(d.getTime())) {
-                  pushAi('يرجى اختيار تاريخ صحيح:', { kind: 'date' });
-                  result = 'Error: Invalid date';
+                  pushAiRef.current('يرجى اختيار تاريخ صحيح:', { kind: 'date' });
+                  result = 'Error: Invalid date format. Use YYYY-MM-DD.';
+                  isError = true;
                 } else {
-                  pushAi(`🔄 تم تحديد التاريخ: ${d.toLocaleDateString('ar-IQ')}`);
-                  handleDate(d.toISOString(), d.toLocaleDateString('ar-IQ'));
-                  result = `Success: Date picked ${parameters.date}`;
+                  handleDateRef.current(d.toISOString(), d.toLocaleDateString('ar-IQ'));
+                  result = `Success: Date picked ${parameters.date}. Now ask the patient for a preferred time and call pick_time.`;
                 }
               } else if (tool_name === 'pick_time') {
-                pushAi(`🔄 تم تحديد الوقت: ${parameters.time}`);
-                handleTime(parameters.time);
-                result = `Success: Time picked ${parameters.time}`;
+                handleTimeRef.current(String(parameters.time));
+                result = `Success: Time picked ${parameters.time}. Now collect patient info (name, phone, age, gender) and call fill_patient_info.`;
               } else if (tool_name === 'fill_patient_info') {
                 setBooking(prev => ({
                   ...prev,
@@ -564,29 +623,32 @@ export const SmartDiagnosisPage: React.FC = () => {
                   }
                 }));
                 setStep('patient');
-                result = 'Success: Patient info updated and UI moved to patient confirmation step.';
+                result = 'Success: Patient info saved. Confirm details with the patient verbally, then call confirm_booking.';
               } else if (tool_name === 'confirm_booking') {
                 const b = bookingRef.current;
                 if (!b.patient.name || !b.patient.phone) {
-                  result = 'Error: Missing name or phone';
-                  pushAi('يرجى تزويدي باسمك الكامل ورقم هاتفك لإتمام الحجز.');
+                  result = 'Error: Missing patient name or phone. Ask the patient for them and call fill_patient_info first.';
+                  isError = true;
+                  pushAiRef.current('يرجى تزويدي باسمك الكامل ورقم هاتفك لإتمام الحجز.');
                 } else {
-                  await handleConfirmBooking();
-                  result = 'Success: Booking confirmed';
+                  await handleConfirmBookingRef.current();
+                  result = 'Success: Booking confirmed and saved.';
                 }
               } else {
-                result = 'Error: Unknown tool';
+                result = `Error: Unknown tool "${tool_name}".`;
+                isError = true;
               }
             } catch (err: any) {
-              result = `Error: ${err.message}`;
+              result = `Error: ${err?.message || String(err)}`;
+              isError = true;
             }
 
+            // ✅ صيغة ElevenLabs WebSocket الصحيحة لإرجاع نتيجة الأداة
             ws.send(JSON.stringify({
-              type: 'client_tool_call_result',
-              client_tool_call_result: {
-                call_id: tool_call_id,
-                result: String(result)
-              }
+              type: 'client_tool_result',
+              tool_call_id: tool_call_id,
+              result: String(result),
+              is_error: isError,
             }));
           }
         } catch (err) { console.warn('[ElevenLabs WS] parse error:', err); }
