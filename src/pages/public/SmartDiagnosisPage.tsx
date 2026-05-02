@@ -195,8 +195,25 @@ export const SmartDiagnosisPage: React.FC = () => {
     if (!isVoice) pushUser(`أنا في ${gov}`);
     
     setStep('clinics');
-    const statusMsg = `📍 محافظة ${gov}. إليك العيادات المتاحة:`;
-    pushAi(statusMsg, { kind: 'clinics', clinics: clinics.filter(c => (c.governorate || '').includes(gov)).slice(0, 8) });
+    // استخدم clinicsRef.current لضمان أحدث بيانات (يتجنّب Stale Closure داخل WS)
+    const allClinics = clinicsRef.current;
+    const sp = bookingRef.current.specialty;
+    let filtered = allClinics.filter(c => (c.governorate || '').includes(gov));
+    if (sp) {
+      const keys = sp.keys;
+      const matchSpec = filtered.filter(c =>
+        c.specialties?.some(s => keys.some(k => s.toLowerCase().includes(k.toLowerCase()))) ||
+        c.services?.some(s => keys.some(k => s.toLowerCase().includes(k.toLowerCase())))
+      );
+      // إذا لم تتطابق أي عيادة مع الاختصاص، نُظهر كل عيادات المحافظة بدلاً من قائمة فارغة
+      if (matchSpec.length > 0) filtered = matchSpec;
+    }
+    const list = filtered.slice(0, 8);
+    const statusMsg = list.length > 0
+      ? `📍 محافظة ${gov} — وجدت ${list.length} عيادة${sp ? ` متخصصة في ${sp.label}` : ''}:`
+      : `📍 محافظة ${gov} — لا توجد عيادات مسجّلة حالياً في هذه المحافظة. جاري عرض العيادات المتاحة:`;
+    const finalList = list.length > 0 ? list : allClinics.slice(0, 8);
+    pushAi(statusMsg, { kind: 'clinics', clinics: finalList });
   };
 
   const handleClinic = (clinic: Clinic) => {
