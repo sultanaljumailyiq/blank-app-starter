@@ -493,7 +493,7 @@ export const SmartDiagnosisPage: React.FC = () => {
                 );
                 if (sp) {
                   handleSpecialty(sp, true);
-                  result = `Success: Selected specialty ${sp.label}. UI step updated to governorate.`;
+                  result = `Success: Selected specialty ${sp.label}. NEXT REQUIRED ACTION: immediately call the tool "show_governorate" to display the governorate selection card in the UI before asking the patient about their location.`;
                 } else {
                   pushAi(`لم أستطع مطابقة "${inputSpec}" مع الاختصاصات المتاحة. يرجى الاختيار من القائمة:`, { kind: 'specialty' });
                   result = 'Error: Specialty not matched';
