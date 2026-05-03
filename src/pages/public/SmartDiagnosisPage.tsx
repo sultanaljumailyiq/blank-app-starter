@@ -490,7 +490,17 @@ export const SmartDiagnosisPage: React.FC = () => {
         setIsConnectingVoice(false);
         pushAiRef.current('🎙️ المساعد الصوتي متصل، تكلم الآن…');
 
-        // إرسال إعدادات الجلسة — نطلب PCM_22050 كمخرج صوتي
+        // Build dynamic context: real specialties, real governorates with clinics, real clinic names
+        const allClinicsNow = clinicsRef.current;
+        const govsWithClinics = Array.from(new Set(
+          allClinicsNow.map(c => normalizeGov(c.governorate)).filter(Boolean) as string[]
+        ));
+        const clinicsByGovStr = govsWithClinics.map(g => {
+          const names = allClinicsNow.filter(c => normalizeGov(c.governorate) === g).map(c => c.name);
+          return `  - ${g}: ${names.join(' | ')}`;
+        }).join('\n');
+        const specialtiesStr = SPECIALTIES.map(sp => `  - ${sp.label}`).join('\n');
+
         ws.send(JSON.stringify({
           type: 'conversation_initiation_client_data',
           conversation_config_override: {
@@ -498,16 +508,34 @@ export const SmartDiagnosisPage: React.FC = () => {
               first_message: 'أهلاً بك في منصة طب الأسنان الذكية! أنا مساعدك الصوتي. ما الذي تحتاجه؟',
               language: 'ar',
               prompt: {
-                prompt: `أنت المساعد الصوتي الرسمي لمنصة طب الأسنان في العراق. تتحدث بلغة عربية عراقية ودودة ومحترفة باسم المنصة.
-مهمتك: مساعدة المريض في حجز موعد عبر هذا التسلسل الإلزامي للأدوات:
-1) عند معرفة الاختصاص → استدعِ select_specialty
-2) فوراً بعدها وقبل أي شيء آخر → استدعِ show_governorate لإظهار بطاقة اختيار المحافظة في الواجهة، ثم اسأل المريض شفهياً عن محافظته.
-3) عند معرفة المحافظة → استدعِ select_governorate
-4) بعد ذلك → استدعِ show_clinics لعرض العيادات، ثم select_clinic عند اختياره.
-5) سؤاله عن اليوم والوقت → pick_date و pick_time
-6) أخذ بياناته (الاسم، رقم الهاتف، العمر، الجنس) → fill_patient_info
-7) تأكيد الحجز → confirm_booking
-قاعدة صارمة: لا تستدعِ select_governorate أبداً قبل أن تستدعي show_governorate أولاً. كن مختصراً ومتعاطفاً. لا تعطِ تشخيصاً طبياً نهائياً.`
+                prompt: `أنت المساعد الصوتي الرسمي لمنصة طب الأسنان في العراق. تتحدث بلهجة عربية عراقية ودودة ومحترفة باسم المنصة.
+
+==== بيانات المنصة الحقيقية (مرجع إلزامي — ممنوع منعاً باتاً اختراع أي اسم خارج هذه القوائم) ====
+الاختصاصات المتاحة:
+${specialtiesStr}
+
+المحافظات التي توجد فيها عيادات مسجلة فعلياً + أسماء العيادات الفعلية:
+${clinicsByGovStr || '  (لا توجد عيادات محمّلة بعد — استخدم أداة show_clinics بعد اختيار المحافظة)'}
+
+كل المحافظات العراقية المدعومة كمدخل:
+${GOVERNORATES.join('، ')}
+
+==== التسلسل الإلزامي للأدوات (ممنوع كسره) ====
+1) عند معرفة الاختصاص → استدعِ select_specialty (تظهر بطاقة الاختصاص).
+2) فوراً بعدها → استدعِ show_governorate (تظهر بطاقة المحافظات)، ثم اسأل المريض شفهياً عن محافظته.
+3) عند معرفة المحافظة → استدعِ select_governorate باسم المحافظة (تُفلتر العيادات تلقائياً وتظهر بطاقة العيادات).
+4) اذكر للمريض أسماء العيادات الموجودة فعلياً في تلك المحافظة من القائمة أعلاه فقط — لا تخترع أسماء.
+5) عند اختياره عيادة → استدعِ select_clinic بالاسم الحقيقي.
+6) استدعِ show_date ثم اسأل عن اليوم → عند معرفة التاريخ استدعِ pick_date (YYYY-MM-DD).
+7) استدعِ show_time → عند معرفة الوقت استدعِ pick_time.
+8) استدعِ show_patient_form → اجمع (الاسم، رقم الهاتف، العمر، الجنس) → استدعِ fill_patient_info.
+9) استدعِ show_confirmation → عند موافقة المريض استدعِ confirm_booking.
+
+قواعد صارمة:
+- لا تستدعِ select_governorate قبل show_governorate.
+- لا تنطق أي اسم عيادة غير موجود في القائمة الحقيقية أعلاه.
+- إذا لم توجد عيادات في محافظة المريض، أخبره بذلك واقترح أقرب محافظة فيها عيادات.
+- كن مختصراً ومتعاطفاً. لا تعطِ تشخيصاً طبياً نهائياً.`
               }
             }
           }
