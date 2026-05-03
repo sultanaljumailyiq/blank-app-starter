@@ -189,6 +189,10 @@ export const SmartDiagnosisPage: React.FC = () => {
   const handleTimeRef = useRef<(t: string) => void>(() => {});
   const handleConfirmBookingRef = useRef<() => Promise<void>>(async () => {});
   const showGovernorateCardRef = useRef<(label?: string) => void>(() => {});
+  const showDateCardRef = useRef<() => void>(() => {});
+  const showTimeCardRef = useRef<() => void>(() => {});
+  const showPatientCardRef = useRef<() => void>(() => {});
+  const showConfirmationCardRef = useRef<() => void>(() => {});
   useEffect(() => {
     pushAiRef.current = pushAi;
     pushUserRef.current = pushUser;
