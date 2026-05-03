@@ -674,6 +674,18 @@ export const SmartDiagnosisPage: React.FC = () => {
                   await handleConfirmBookingRef.current();
                   result = 'Success: Booking confirmed and saved.';
                 }
+              } else if (tool_name === 'show_date') {
+                showDateCardRef.current();
+                result = 'Success: Date picker card displayed. Ask the patient which day they prefer.';
+              } else if (tool_name === 'show_time') {
+                showTimeCardRef.current();
+                result = 'Success: Time slots card displayed. Ask the patient for their preferred time.';
+              } else if (tool_name === 'show_patient_form') {
+                showPatientCardRef.current();
+                result = 'Success: Patient info form displayed. Ask the patient for name, phone, age, gender.';
+              } else if (tool_name === 'show_confirmation') {
+                showConfirmationCardRef.current();
+                result = 'Success: Confirmation card displayed. Ask patient to confirm.';
               } else {
                 result = `Error: Unknown tool "${tool_name}".`;
                 isError = true;
