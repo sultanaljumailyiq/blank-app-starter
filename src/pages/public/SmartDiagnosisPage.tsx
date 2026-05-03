@@ -26,9 +26,50 @@ const SPECIALTIES = [
 ];
 
 const GOVERNORATES = [
-  'بغداد', 'أربيل', 'البصرة', 'الموصل', 'النجف', 'كربلاء', 'صلاح الدين', 
-  'الأنبار', 'ذي قار', 'ميسان', 'كركوك', 'ديالى', 'بابل', 'واسط', 'المثنى', 'القادسية', 'دهوك', 'السليمانية'
+  'بغداد', 'البصرة', 'نينوى', 'أربيل', 'النجف', 'كربلاء', 'ديالى',
+  'كركوك', 'ذي قار', 'ميسان', 'المثنى', 'الأنبار', 'بابل',
+  'صلاح الدين', 'واسط', 'القادسية', 'دهوك', 'السليمانية',
 ];
+
+// English / city / variant aliases -> canonical Arabic name
+const GOV_ALIASES: Record<string, string> = {
+  'baghdad': 'بغداد', 'بغداد محافظة': 'بغداد', 'محافظة بغداد': 'بغداد',
+  'basra': 'البصرة', 'basrah': 'البصرة', 'بصرة': 'البصرة',
+  'mosul': 'نينوى', 'الموصل': 'نينوى', 'موصل': 'نينوى', 'ninawa': 'نينوى', 'nineveh': 'نينوى',
+  'erbil': 'أربيل', 'arbil': 'أربيل', 'هولير': 'أربيل', 'اربيل': 'أربيل',
+  'najaf': 'النجف',
+  'karbala': 'كربلاء', 'kerbala': 'كربلاء',
+  'diyala': 'ديالى', 'بعقوبة': 'ديالى',
+  'kirkuk': 'كركوك',
+  'thiqar': 'ذي قار', 'dhi qar': 'ذي قار', 'الناصرية': 'ذي قار', 'ناصرية': 'ذي قار',
+  'maysan': 'ميسان', 'missan': 'ميسان', 'العمارة': 'ميسان', 'عمارة': 'ميسان',
+  'muthanna': 'المثنى', 'السماوة': 'المثنى', 'سماوة': 'المثنى',
+  'anbar': 'الأنبار', 'الانبار': 'الأنبار', 'الرمادي': 'الأنبار', 'رمادي': 'الأنبار', 'الفلوجة': 'الأنبار',
+  'babil': 'بابل', 'babylon': 'بابل', 'الحلة': 'بابل', 'حلة': 'بابل',
+  'saladin': 'صلاح الدين', 'salahuddin': 'صلاح الدين', 'salah al-din': 'صلاح الدين',
+  'تكريت': 'صلاح الدين', 'سامراء': 'صلاح الدين',
+  'wasit': 'واسط', 'الكوت': 'واسط', 'كوت': 'واسط',
+  'qadisiyyah': 'القادسية', 'qadisiya': 'القادسية', 'الديوانية': 'القادسية', 'ديوانية': 'القادسية',
+  'duhok': 'دهوك', 'dohuk': 'دهوك',
+  'sulaymaniyah': 'السليمانية', 'sulaimaniyah': 'السليمانية', 'السليمانيه': 'السليمانية',
+};
+
+// Normalize any governorate string (Arabic/English/with suffix "محافظة") to canonical
+function normalizeGov(raw?: string | null): string | null {
+  if (!raw) return null;
+  const trimmed = String(raw).trim();
+  const lower = trimmed.toLowerCase();
+  if (GOV_ALIASES[lower]) return GOV_ALIASES[lower];
+  // Strip trailing/leading "محافظة"
+  const stripped = trimmed.replace(/^محافظة\s+/, '').replace(/\s+محافظة$/, '').trim();
+  for (const g of GOVERNORATES) {
+    if (stripped === g || stripped.includes(g) || g.includes(stripped)) return g;
+  }
+  for (const [alias, canonical] of Object.entries(GOV_ALIASES)) {
+    if (lower.includes(alias) || alias.includes(lower)) return canonical;
+  }
+  return null;
+}
 
 type Step = 'intro' | 'specialty' | 'governorate' | 'clinics' | 'date' | 'time' | 'patient' | 'confirmed';
 
