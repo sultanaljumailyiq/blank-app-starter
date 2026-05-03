@@ -676,8 +676,30 @@ export const SmartDiagnosisPage: React.FC = () => {
             }));
           }
         } catch (err) { console.warn('[ElevenLabs WS] parse error:', err); }
-      };
+  };
 
+  const handleClinic = (clinic: Clinic) => {
+    setBooking(prev => ({ ...prev, clinic }));
+    pushUser(`اخترت ${clinic.name}`);
+    pushAi(`اختيار رائع! 👏\nالآن اختر اليوم المناسب لموعدك:`, { kind: 'date' });
+    setStep('date');
+  };
+
+  const handleDate = (dateISO: string, label: string) => {
+    setBooking(prev => ({ ...prev, date: dateISO }));
+    pushUser(`أريد يوم ${label}`);
+    setTimeout(() => {
+      pushAi('اختر الوقت المفضل لك:', { kind: 'time' });
+      setStep('time');
+    }, 300);
+  };
+
+  // Cards-only helpers for voice agent (show without setting state)
+  const showCard = (kind: CardKind['kind'], message?: string) => {
+    if (kind === 'clinics') return; // use show_clinics path
+    const card = { kind } as CardKind;
+    pushAi(message || '', card);
+  };
 
       ws.onerror = (err) => {
         console.error('[ElevenLabs WS] error:', err);
