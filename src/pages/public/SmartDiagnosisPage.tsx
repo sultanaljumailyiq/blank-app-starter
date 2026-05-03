@@ -256,6 +256,22 @@ export const SmartDiagnosisPage: React.FC = () => {
     pushAi(statusMsg, { kind: 'clinics', clinics: finalList });
   };
 
+  const handleClinic = (clinic: Clinic) => {
+    setBooking(prev => ({ ...prev, clinic }));
+    pushUser(`اخترت ${clinic.name}`);
+    pushAi(`اختيار رائع! 👏\nالآن اختر اليوم المناسب لموعدك:`, { kind: 'date' });
+    setStep('date');
+  };
+
+  const handleDate = (dateISO: string, label: string) => {
+    setBooking(prev => ({ ...prev, date: dateISO }));
+    pushUser(`أريد يوم ${label}`);
+    setTimeout(() => {
+      pushAi('اختر الوقت المفضل لك:', { kind: 'time' });
+      setStep('time');
+    }, 300);
+  };
+
   const handleTime = (time: string) => {
     setBooking(prev => ({ ...prev, time }));
     pushUser(`الساعة ${time}`);
@@ -263,6 +279,15 @@ export const SmartDiagnosisPage: React.FC = () => {
       pushAi('ممتاز! آخر خطوة — أدخل بياناتك لتأكيد الحجز:', { kind: 'patient' });
       setStep('patient');
     }, 300);
+  };
+
+  // Cards-only helpers for voice agent (show specific card without changing data)
+  const showDateCard = () => { setStep('date'); pushAi('اختر اليوم المناسب لموعدك:', { kind: 'date' }); };
+  const showTimeCard = () => { setStep('time'); pushAi('اختر الوقت المفضل:', { kind: 'time' }); };
+  const showPatientCard = () => { setStep('patient'); pushAi('أدخل بياناتك لتأكيد الحجز:', { kind: 'patient' }); };
+  const showConfirmationCard = () => {
+    const b = bookingRef.current;
+    pushAi(`📋 ملخص الحجز:\n${b.clinic?.name || ''} — ${b.date || ''} ${b.time || ''}`, { kind: 'confirmation' });
   };
 
   const handleConfirmBooking = async () => {
