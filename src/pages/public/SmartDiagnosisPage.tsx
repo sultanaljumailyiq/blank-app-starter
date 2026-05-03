@@ -338,6 +338,10 @@ export const SmartDiagnosisPage: React.FC = () => {
     handleTimeRef.current = handleTime;
     handleConfirmBookingRef.current = handleConfirmBooking;
     showGovernorateCardRef.current = showGovernorateCard;
+    showDateCardRef.current = showDateCard;
+    showTimeCardRef.current = showTimeCard;
+    showPatientCardRef.current = showPatientCard;
+    showConfirmationCardRef.current = showConfirmationCard;
   });
 
 
