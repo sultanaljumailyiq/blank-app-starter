@@ -26,9 +26,50 @@ const SPECIALTIES = [
 ];
 
 const GOVERNORATES = [
-  'بغداد', 'أربيل', 'البصرة', 'الموصل', 'النجف', 'كربلاء', 'صلاح الدين', 
-  'الأنبار', 'ذي قار', 'ميسان', 'كركوك', 'ديالى', 'بابل', 'واسط', 'المثنى', 'القادسية', 'دهوك', 'السليمانية'
+  'بغداد', 'البصرة', 'نينوى', 'أربيل', 'النجف', 'كربلاء', 'ديالى',
+  'كركوك', 'ذي قار', 'ميسان', 'المثنى', 'الأنبار', 'بابل',
+  'صلاح الدين', 'واسط', 'القادسية', 'دهوك', 'السليمانية',
 ];
+
+// English / city / variant aliases -> canonical Arabic name
+const GOV_ALIASES: Record<string, string> = {
+  'baghdad': 'بغداد', 'بغداد محافظة': 'بغداد', 'محافظة بغداد': 'بغداد',
+  'basra': 'البصرة', 'basrah': 'البصرة', 'بصرة': 'البصرة',
+  'mosul': 'نينوى', 'الموصل': 'نينوى', 'موصل': 'نينوى', 'ninawa': 'نينوى', 'nineveh': 'نينوى',
+  'erbil': 'أربيل', 'arbil': 'أربيل', 'هولير': 'أربيل', 'اربيل': 'أربيل',
+  'najaf': 'النجف',
+  'karbala': 'كربلاء', 'kerbala': 'كربلاء',
+  'diyala': 'ديالى', 'بعقوبة': 'ديالى',
+  'kirkuk': 'كركوك',
+  'thiqar': 'ذي قار', 'dhi qar': 'ذي قار', 'الناصرية': 'ذي قار', 'ناصرية': 'ذي قار',
+  'maysan': 'ميسان', 'missan': 'ميسان', 'العمارة': 'ميسان', 'عمارة': 'ميسان',
+  'muthanna': 'المثنى', 'السماوة': 'المثنى', 'سماوة': 'المثنى',
+  'anbar': 'الأنبار', 'الانبار': 'الأنبار', 'الرمادي': 'الأنبار', 'رمادي': 'الأنبار', 'الفلوجة': 'الأنبار',
+  'babil': 'بابل', 'babylon': 'بابل', 'الحلة': 'بابل', 'حلة': 'بابل',
+  'saladin': 'صلاح الدين', 'salahuddin': 'صلاح الدين', 'salah al-din': 'صلاح الدين',
+  'تكريت': 'صلاح الدين', 'سامراء': 'صلاح الدين',
+  'wasit': 'واسط', 'الكوت': 'واسط', 'كوت': 'واسط',
+  'qadisiyyah': 'القادسية', 'qadisiya': 'القادسية', 'الديوانية': 'القادسية', 'ديوانية': 'القادسية',
+  'duhok': 'دهوك', 'dohuk': 'دهوك',
+  'sulaymaniyah': 'السليمانية', 'sulaimaniyah': 'السليمانية', 'السليمانيه': 'السليمانية',
+};
+
+// Normalize any governorate string (Arabic/English/with suffix "محافظة") to canonical
+function normalizeGov(raw?: string | null): string | null {
+  if (!raw) return null;
+  const trimmed = String(raw).trim();
+  const lower = trimmed.toLowerCase();
+  if (GOV_ALIASES[lower]) return GOV_ALIASES[lower];
+  // Strip trailing/leading "محافظة"
+  const stripped = trimmed.replace(/^محافظة\s+/, '').replace(/\s+محافظة$/, '').trim();
+  for (const g of GOVERNORATES) {
+    if (stripped === g || stripped.includes(g) || g.includes(stripped)) return g;
+  }
+  for (const [alias, canonical] of Object.entries(GOV_ALIASES)) {
+    if (lower.includes(alias) || alias.includes(lower)) return canonical;
+  }
+  return null;
+}
 
 type Step = 'intro' | 'specialty' | 'governorate' | 'clinics' | 'date' | 'time' | 'patient' | 'confirmed';
 
@@ -148,6 +189,10 @@ export const SmartDiagnosisPage: React.FC = () => {
   const handleTimeRef = useRef<(t: string) => void>(() => {});
   const handleConfirmBookingRef = useRef<() => Promise<void>>(async () => {});
   const showGovernorateCardRef = useRef<(label?: string) => void>(() => {});
+  const showDateCardRef = useRef<() => void>(() => {});
+  const showTimeCardRef = useRef<() => void>(() => {});
+  const showPatientCardRef = useRef<() => void>(() => {});
+  const showConfirmationCardRef = useRef<() => void>(() => {});
   useEffect(() => {
     pushAiRef.current = pushAi;
     pushUserRef.current = pushUser;
@@ -193,19 +238,18 @@ export const SmartDiagnosisPage: React.FC = () => {
   const handleGovernorate = (gov: string, isVoice = false) => {
     setBooking(prev => ({ ...prev, governorate: gov }));
     if (!isVoice) pushUser(`أنا في ${gov}`);
-    
+
     setStep('clinics');
-    // استخدم clinicsRef.current لضمان أحدث بيانات (يتجنّب Stale Closure داخل WS)
     const allClinics = clinicsRef.current;
     const sp = bookingRef.current.specialty;
-    let filtered = allClinics.filter(c => (c.governorate || '').includes(gov));
+    // Normalize each clinic governorate before comparing
+    let filtered = allClinics.filter(c => normalizeGov(c.governorate) === gov);
     if (sp) {
       const keys = sp.keys;
       const matchSpec = filtered.filter(c =>
         c.specialties?.some(s => keys.some(k => s.toLowerCase().includes(k.toLowerCase()))) ||
         c.services?.some(s => keys.some(k => s.toLowerCase().includes(k.toLowerCase())))
       );
-      // إذا لم تتطابق أي عيادة مع الاختصاص، نُظهر كل عيادات المحافظة بدلاً من قائمة فارغة
       if (matchSpec.length > 0) filtered = matchSpec;
     }
     const list = filtered.slice(0, 8);
@@ -239,6 +283,15 @@ export const SmartDiagnosisPage: React.FC = () => {
       pushAi('ممتاز! آخر خطوة — أدخل بياناتك لتأكيد الحجز:', { kind: 'patient' });
       setStep('patient');
     }, 300);
+  };
+
+  // Cards-only helpers for voice agent (show specific card without changing data)
+  const showDateCard = () => { setStep('date'); pushAi('اختر اليوم المناسب لموعدك:', { kind: 'date' }); };
+  const showTimeCard = () => { setStep('time'); pushAi('اختر الوقت المفضل:', { kind: 'time' }); };
+  const showPatientCard = () => { setStep('patient'); pushAi('أدخل بياناتك لتأكيد الحجز:', { kind: 'patient' }); };
+  const showConfirmationCard = () => {
+    const b = bookingRef.current;
+    pushAi(`📋 ملخص الحجز:\n${b.clinic?.name || ''} — ${b.date || ''} ${b.time || ''}`, { kind: 'confirmation' });
   };
 
   const handleConfirmBooking = async () => {
@@ -285,6 +338,10 @@ export const SmartDiagnosisPage: React.FC = () => {
     handleTimeRef.current = handleTime;
     handleConfirmBookingRef.current = handleConfirmBooking;
     showGovernorateCardRef.current = showGovernorateCard;
+    showDateCardRef.current = showDateCard;
+    showTimeCardRef.current = showTimeCard;
+    showPatientCardRef.current = showPatientCard;
+    showConfirmationCardRef.current = showConfirmationCard;
   });
 
 
@@ -433,7 +490,17 @@ export const SmartDiagnosisPage: React.FC = () => {
         setIsConnectingVoice(false);
         pushAiRef.current('🎙️ المساعد الصوتي متصل، تكلم الآن…');
 
-        // إرسال إعدادات الجلسة — نطلب PCM_22050 كمخرج صوتي
+        // Build dynamic context: real specialties, real governorates with clinics, real clinic names
+        const allClinicsNow = clinicsRef.current;
+        const govsWithClinics = Array.from(new Set(
+          allClinicsNow.map(c => normalizeGov(c.governorate)).filter(Boolean) as string[]
+        ));
+        const clinicsByGovStr = govsWithClinics.map(g => {
+          const names = allClinicsNow.filter(c => normalizeGov(c.governorate) === g).map(c => c.name);
+          return `  - ${g}: ${names.join(' | ')}`;
+        }).join('\n');
+        const specialtiesStr = SPECIALTIES.map(sp => `  - ${sp.label}`).join('\n');
+
         ws.send(JSON.stringify({
           type: 'conversation_initiation_client_data',
           conversation_config_override: {
@@ -441,16 +508,34 @@ export const SmartDiagnosisPage: React.FC = () => {
               first_message: 'أهلاً بك في منصة طب الأسنان الذكية! أنا مساعدك الصوتي. ما الذي تحتاجه؟',
               language: 'ar',
               prompt: {
-                prompt: `أنت المساعد الصوتي الرسمي لمنصة طب الأسنان في العراق. تتحدث بلغة عربية عراقية ودودة ومحترفة باسم المنصة.
-مهمتك: مساعدة المريض في حجز موعد عبر هذا التسلسل الإلزامي للأدوات:
-1) عند معرفة الاختصاص → استدعِ select_specialty
-2) فوراً بعدها وقبل أي شيء آخر → استدعِ show_governorate لإظهار بطاقة اختيار المحافظة في الواجهة، ثم اسأل المريض شفهياً عن محافظته.
-3) عند معرفة المحافظة → استدعِ select_governorate
-4) بعد ذلك → استدعِ show_clinics لعرض العيادات، ثم select_clinic عند اختياره.
-5) سؤاله عن اليوم والوقت → pick_date و pick_time
-6) أخذ بياناته (الاسم، رقم الهاتف، العمر، الجنس) → fill_patient_info
-7) تأكيد الحجز → confirm_booking
-قاعدة صارمة: لا تستدعِ select_governorate أبداً قبل أن تستدعي show_governorate أولاً. كن مختصراً ومتعاطفاً. لا تعطِ تشخيصاً طبياً نهائياً.`
+                prompt: `أنت المساعد الصوتي الرسمي لمنصة طب الأسنان في العراق. تتحدث بلهجة عربية عراقية ودودة ومحترفة باسم المنصة.
+
+==== بيانات المنصة الحقيقية (مرجع إلزامي — ممنوع منعاً باتاً اختراع أي اسم خارج هذه القوائم) ====
+الاختصاصات المتاحة:
+${specialtiesStr}
+
+المحافظات التي توجد فيها عيادات مسجلة فعلياً + أسماء العيادات الفعلية:
+${clinicsByGovStr || '  (لا توجد عيادات محمّلة بعد — استخدم أداة show_clinics بعد اختيار المحافظة)'}
+
+كل المحافظات العراقية المدعومة كمدخل:
+${GOVERNORATES.join('، ')}
+
+==== التسلسل الإلزامي للأدوات (ممنوع كسره) ====
+1) عند معرفة الاختصاص → استدعِ select_specialty (تظهر بطاقة الاختصاص).
+2) فوراً بعدها → استدعِ show_governorate (تظهر بطاقة المحافظات)، ثم اسأل المريض شفهياً عن محافظته.
+3) عند معرفة المحافظة → استدعِ select_governorate باسم المحافظة (تُفلتر العيادات تلقائياً وتظهر بطاقة العيادات).
+4) اذكر للمريض أسماء العيادات الموجودة فعلياً في تلك المحافظة من القائمة أعلاه فقط — لا تخترع أسماء.
+5) عند اختياره عيادة → استدعِ select_clinic بالاسم الحقيقي.
+6) استدعِ show_date ثم اسأل عن اليوم → عند معرفة التاريخ استدعِ pick_date (YYYY-MM-DD).
+7) استدعِ show_time → عند معرفة الوقت استدعِ pick_time.
+8) استدعِ show_patient_form → اجمع (الاسم، رقم الهاتف، العمر، الجنس) → استدعِ fill_patient_info.
+9) استدعِ show_confirmation → عند موافقة المريض استدعِ confirm_booking.
+
+قواعد صارمة:
+- لا تستدعِ select_governorate قبل show_governorate.
+- لا تنطق أي اسم عيادة غير موجود في القائمة الحقيقية أعلاه.
+- إذا لم توجد عيادات في محافظة المريض، أخبره بذلك واقترح أقرب محافظة فيها عيادات.
+- كن مختصراً ومتعاطفاً. لا تعطِ تشخيصاً طبياً نهائياً.`
               }
             }
           }
@@ -542,32 +627,23 @@ export const SmartDiagnosisPage: React.FC = () => {
                 result = `Success: Governorate selection card is now displayed. Available governorates: ${GOVERNORATES.join(', ')}. Ask the patient which governorate they live in, then call select_governorate.`;
               } else if (tool_name === 'select_governorate') {
                 const inputGov = String(parameters.governorate_name || parameters.governorate || parameters.name || '').trim();
-                const g = GOVERNORATES.find(x =>
-                  inputGov.includes(x) || x.includes(inputGov) ||
-                  (inputGov.includes('تكريت') && x === 'صلاح الدين') ||
-                  (inputGov.includes('الرمادي') && x === 'الأنبار') ||
-                  (inputGov.includes('الحلة') && x === 'بابل') ||
-                  (inputGov.includes('العمارة') && x === 'ميسان') ||
-                  (inputGov.includes('الناصرية') && x === 'ذي قار') ||
-                  (inputGov.includes('الديوانية') && x === 'القادسية')
-                );
+                const g = normalizeGov(inputGov);
                 if (g) {
                   handleGovernorateRef.current(g, true);
-                  // عدّ العيادات المتاحة في المحافظة لإبلاغ الـ agent
-                  const cnt = clinicsRef.current.filter(c => (c.governorate || '').includes(g)).length;
-                  result = `Success: Selected governorate "${g}". Found ${cnt} clinic(s) in this governorate. The clinics card is now displayed in the UI. Ask the patient to choose a clinic, then call select_clinic with the clinic name.`;
+                  const cnt = clinicsRef.current.filter(c => normalizeGov(c.governorate) === g).length;
+                  const names = clinicsRef.current.filter(c => normalizeGov(c.governorate) === g).map(c => c.name).slice(0, 8);
+                  result = `Success: Selected governorate "${g}". Found ${cnt} clinic(s). Available clinic names to read: ${names.join(' | ') || '—'}. The clinics card is shown. Read these EXACT clinic names to the patient (do not invent names) then call select_clinic with the chosen name.`;
                 } else {
                   showGovernorateCardRef.current(bookingRef.current.specialty?.label);
                   result = `Error: Could not match "${inputGov}" to any governorate. Available governorates: ${GOVERNORATES.join(', ')}. The governorate card is re-displayed for manual selection.`;
                   isError = true;
                 }
               } else if (tool_name === 'show_clinics') {
-                // فلترة العيادات حسب المحافظة المختارة (إن وُجدت) قبل العرض
                 setStep('clinics');
                 const gov = bookingRef.current.governorate;
                 const sp = bookingRef.current.specialty;
                 let list = clinicsRef.current;
-                if (gov) list = list.filter(c => (c.governorate || '').includes(gov));
+                if (gov) list = list.filter(c => normalizeGov(c.governorate) === gov);
                 if (sp) {
                   const keys = sp.keys;
                   const matched = list.filter(c =>
@@ -634,6 +710,18 @@ export const SmartDiagnosisPage: React.FC = () => {
                   await handleConfirmBookingRef.current();
                   result = 'Success: Booking confirmed and saved.';
                 }
+              } else if (tool_name === 'show_date') {
+                showDateCardRef.current();
+                result = 'Success: Date picker card displayed. Ask the patient which day they prefer.';
+              } else if (tool_name === 'show_time') {
+                showTimeCardRef.current();
+                result = 'Success: Time slots card displayed. Ask the patient for their preferred time.';
+              } else if (tool_name === 'show_patient_form') {
+                showPatientCardRef.current();
+                result = 'Success: Patient info form displayed. Ask the patient for name, phone, age, gender.';
+              } else if (tool_name === 'show_confirmation') {
+                showConfirmationCardRef.current();
+                result = 'Success: Confirmation card displayed. Ask patient to confirm.';
               } else {
                 result = `Error: Unknown tool "${tool_name}".`;
                 isError = true;
