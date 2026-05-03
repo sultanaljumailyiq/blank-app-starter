@@ -591,32 +591,23 @@ export const SmartDiagnosisPage: React.FC = () => {
                 result = `Success: Governorate selection card is now displayed. Available governorates: ${GOVERNORATES.join(', ')}. Ask the patient which governorate they live in, then call select_governorate.`;
               } else if (tool_name === 'select_governorate') {
                 const inputGov = String(parameters.governorate_name || parameters.governorate || parameters.name || '').trim();
-                const g = GOVERNORATES.find(x =>
-                  inputGov.includes(x) || x.includes(inputGov) ||
-                  (inputGov.includes('تكريت') && x === 'صلاح الدين') ||
-                  (inputGov.includes('الرمادي') && x === 'الأنبار') ||
-                  (inputGov.includes('الحلة') && x === 'بابل') ||
-                  (inputGov.includes('العمارة') && x === 'ميسان') ||
-                  (inputGov.includes('الناصرية') && x === 'ذي قار') ||
-                  (inputGov.includes('الديوانية') && x === 'القادسية')
-                );
+                const g = normalizeGov(inputGov);
                 if (g) {
                   handleGovernorateRef.current(g, true);
-                  // عدّ العيادات المتاحة في المحافظة لإبلاغ الـ agent
-                  const cnt = clinicsRef.current.filter(c => (c.governorate || '').includes(g)).length;
-                  result = `Success: Selected governorate "${g}". Found ${cnt} clinic(s) in this governorate. The clinics card is now displayed in the UI. Ask the patient to choose a clinic, then call select_clinic with the clinic name.`;
+                  const cnt = clinicsRef.current.filter(c => normalizeGov(c.governorate) === g).length;
+                  const names = clinicsRef.current.filter(c => normalizeGov(c.governorate) === g).map(c => c.name).slice(0, 8);
+                  result = `Success: Selected governorate "${g}". Found ${cnt} clinic(s). Available clinic names to read: ${names.join(' | ') || '—'}. The clinics card is shown. Read these EXACT clinic names to the patient (do not invent names) then call select_clinic with the chosen name.`;
                 } else {
                   showGovernorateCardRef.current(bookingRef.current.specialty?.label);
                   result = `Error: Could not match "${inputGov}" to any governorate. Available governorates: ${GOVERNORATES.join(', ')}. The governorate card is re-displayed for manual selection.`;
                   isError = true;
                 }
               } else if (tool_name === 'show_clinics') {
-                // فلترة العيادات حسب المحافظة المختارة (إن وُجدت) قبل العرض
                 setStep('clinics');
                 const gov = bookingRef.current.governorate;
                 const sp = bookingRef.current.specialty;
                 let list = clinicsRef.current;
-                if (gov) list = list.filter(c => (c.governorate || '').includes(gov));
+                if (gov) list = list.filter(c => normalizeGov(c.governorate) === gov);
                 if (sp) {
                   const keys = sp.keys;
                   const matched = list.filter(c =>
