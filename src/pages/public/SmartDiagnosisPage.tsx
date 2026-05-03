@@ -692,7 +692,6 @@ export const SmartDiagnosisPage: React.FC = () => {
             }));
           }
         } catch (err) { console.warn('[ElevenLabs WS] parse error:', err); }
-        } catch (err) { console.warn("[ElevenLabs WS] parse error:", err); }
       };
 
 
