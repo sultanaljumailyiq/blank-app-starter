@@ -234,19 +234,18 @@ export const SmartDiagnosisPage: React.FC = () => {
   const handleGovernorate = (gov: string, isVoice = false) => {
     setBooking(prev => ({ ...prev, governorate: gov }));
     if (!isVoice) pushUser(`أنا في ${gov}`);
-    
+
     setStep('clinics');
-    // استخدم clinicsRef.current لضمان أحدث بيانات (يتجنّب Stale Closure داخل WS)
     const allClinics = clinicsRef.current;
     const sp = bookingRef.current.specialty;
-    let filtered = allClinics.filter(c => (c.governorate || '').includes(gov));
+    // Normalize each clinic governorate before comparing
+    let filtered = allClinics.filter(c => normalizeGov(c.governorate) === gov);
     if (sp) {
       const keys = sp.keys;
       const matchSpec = filtered.filter(c =>
         c.specialties?.some(s => keys.some(k => s.toLowerCase().includes(k.toLowerCase()))) ||
         c.services?.some(s => keys.some(k => s.toLowerCase().includes(k.toLowerCase())))
       );
-      // إذا لم تتطابق أي عيادة مع الاختصاص، نُظهر كل عيادات المحافظة بدلاً من قائمة فارغة
       if (matchSpec.length > 0) filtered = matchSpec;
     }
     const list = filtered.slice(0, 8);
@@ -255,22 +254,6 @@ export const SmartDiagnosisPage: React.FC = () => {
       : `📍 محافظة ${gov} — لا توجد عيادات مسجّلة حالياً في هذه المحافظة. جاري عرض العيادات المتاحة:`;
     const finalList = list.length > 0 ? list : allClinics.slice(0, 8);
     pushAi(statusMsg, { kind: 'clinics', clinics: finalList });
-  };
-
-  const handleClinic = (clinic: Clinic) => {
-    setBooking(prev => ({ ...prev, clinic }));
-    pushUser(`اخترت ${clinic.name}`);
-    pushAi(`اختيار رائع! 👏\nالآن اختر اليوم المناسب لموعدك:`, { kind: 'date' });
-    setStep('date');
-  };
-
-  const handleDate = (dateISO: string, label: string) => {
-    setBooking(prev => ({ ...prev, date: dateISO }));
-    pushUser(`أريد يوم ${label}`);
-    setTimeout(() => {
-      pushAi('اختر الوقت المفضل لك:', { kind: 'time' });
-      setStep('time');
-    }, 300);
   };
 
   const handleTime = (time: string) => {
